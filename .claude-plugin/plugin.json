@@ -1,0 +1,10 @@
+{
+  "name": "job-search-os",
+  "version": "0.1.0",
+  "description": "An agentic job search system: candidate profile, target-role trajectory, opportunity scoring, resume tailoring, company research, interview prep/review, evidence-graded career coaching, offer negotiation, and a pipeline tracker. State lives in your own workspace folder, never in the plugin.",
+  "author": { "name": "Jim Krygowski", "url": "https://linkedin.com/in/jimkrygowski" },
+  "homepage": "https://github.com/jimkrygowski/job-search-os-plugin",
+  "repository": "https://github.com/jimkrygowski/job-search-os-plugin",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "keywords": ["job-search", "career", "resume", "interview", "negotiation"]
+}

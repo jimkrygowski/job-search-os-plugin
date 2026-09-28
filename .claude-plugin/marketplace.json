@@ -1,0 +1,12 @@
+{
+  "name": "job-search-os",
+  "description": "Marketplace for the job-search-os plugin",
+  "owner": { "name": "Jim Krygowski" },
+  "plugins": [
+    {
+      "name": "job-search-os",
+      "source": "./",
+      "description": "An agentic job search system with state kept in your own workspace."
+    }
+  ]
+}
