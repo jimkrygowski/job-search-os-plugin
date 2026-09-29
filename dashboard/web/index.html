@@ -1,2 +1,19 @@
 <!doctype html>
-<title>Job Search Dashboard</title>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Search Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/d3.min.js"></script>
+  <script src="vendor/d3-sankey.min.js"></script>
+  <script type="module" src="dist/web/src/app.js"></script>
+</head>
+<body>
+  <header class="page-head">
+    <h1>Job search dashboard</h1>
+    <p class="muted">Read-only view of your workspace. Nothing here leaves this computer.</p>
+  </header>
+  <main id="app" aria-live="polite"><p class="muted">Loading…</p></main>
+</body>
+</html>

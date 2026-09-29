@@ -1,0 +1,3 @@
+d3 7.9.0 (https://www.npmjs.com/package/d3) - dist/d3.min.js, ISC license
+d3-sankey 0.12.3 (https://www.npmjs.com/package/d3-sankey) - dist/d3-sankey.min.js, BSD-3-Clause license
+Copied unmodified from the npm tarballs. Loaded as classic scripts; d3-sankey attaches to the global d3.
