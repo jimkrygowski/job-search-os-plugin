@@ -51,9 +51,15 @@ trajectory to score against isn't meaningful.
 6. Add it to the tracker:
    ```
    python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" add "<Company>" "<Role>" --stage "Identified" \
+     --source "<source>" \
      --next-action "<what the user should do next>" \
      --next-action-date "<date, if known>"
    ```
+   `--source` is how the opportunity reached the user, exactly one of:
+   `Referral`, `Recruiter Inbound`, `Applied Cold`, `Warm Intro`,
+   `Job Alert`, `Other`. If it isn't obvious from the conversation (a job
+   alert email, a recruiter's message, a named referrer), ask — don't
+   guess. If the user has already applied, use `--stage "Applied"`.
    (`add` stores the Company/Role you typed, unslugified, so the tracker
    table stays human-readable — only the folder name is slugified.)
 7. Tell the user the result plainly, including if it scores poorly — cite

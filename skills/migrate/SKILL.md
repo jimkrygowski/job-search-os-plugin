@@ -29,7 +29,11 @@ changed.
    and ask for the right path.
 6. On confirmation, run the same command without `--dry-run`.
 7. Verify: `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" list` run in
-   the destination shows their pipeline.
+   the destination shows their pipeline. If the migration printed stage
+   names that aren't on the canonical list, show them to the user and, for
+   each unknown one, agree the right stage and set it with `update-status`.
+   Then offer `backfill-history` so the dashboard can show each
+   opportunity's path.
 8. Tell the user to start future sessions from the workspace folder, and
    offer `git init` there (keep any remote private). If the destination
    isn't the current directory, tell them to restart Claude there so the
