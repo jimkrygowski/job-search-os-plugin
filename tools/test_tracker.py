@@ -1,6 +1,7 @@
 import concurrent.futures
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -479,6 +480,154 @@ class EventLogTest(_CLIBase):
         self.run_cli("add", "Acme", "VP", "--stage", "Nope", "--source", "Other")
         self.run_cli("update-status", "Ghost", "Co", "--stage", "Applied")
         self.assertEqual(self.events(), [])
+
+
+class ExportTest(_CLIBase):
+    def export(self):
+        r = self.ok("export", "--json")
+        return json.loads(r.stdout)
+
+    def test_export_shape_and_vocabulary(self):
+        self.ok("add", "Acme Inc.", "VP Eng", "--stage", "Applied", "--source", "Referral",
+                "--next-action", "ping", "--next-action-date", "2026-10-01")
+        data = self.export()
+        self.assertEqual(data["schema"], 1)
+        self.assertEqual(data["stages"], tracker.STAGES)
+        self.assertEqual(data["outcomes"], tracker.OUTCOMES)
+        self.assertEqual(data["sources"], tracker.SOURCES)
+        [row] = data["active"]
+        self.assertEqual(row, {
+            "company": "Acme Inc.", "role": "VP Eng", "slug": "acme_inc/vp_eng",
+            "stage": "Applied", "source": "Referral", "last_activity": tracker.today(),
+            "next_action": "ping", "next_action_date": "2026-10-01",
+        })
+        self.assertEqual(data["closed"], [])
+        self.assertEqual([e["type"] for e in data["events"]], ["add"])
+        self.assertEqual(data["warnings"], [])
+
+    def test_closed_rows_carry_outcome(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        self.ok("close", "Acme", "VP", "--reason", "r", "--outcome", "Rejected")
+        [row] = self.export()["closed"]
+        self.assertEqual(row["outcome"], "Rejected")
+
+    def test_legacy_stage_exported_as_canonical_and_unmapped_warned(self):
+        Path("tracker.md").write_text(LegacyTableTest.V01_ACTIVE.replace(
+            "| Acme | VP | Applied |", "| Acme | VP | Phone Screen |"
+        ) + "| Beta | CTO | Networking | 2026-08-02 |  |  |\n")
+        data = self.export()
+        self.assertEqual([r["stage"] for r in data["active"]], ["Recruiter Screen", "Networking"])
+        self.assertEqual(len(data["warnings"]), 1)
+        self.assertIn("Networking", data["warnings"][0])
+
+    def test_malformed_event_lines_are_warnings_not_errors(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        with Path("tracker_events.jsonl").open("a") as f:
+            f.write("{not json\n")
+            f.write('{"ts": "2026-01-01T00:00:00"}\n')
+        data = self.export()
+        self.assertEqual(len(data["events"]), 1)
+        self.assertEqual(len(data["warnings"]), 2)
+        self.assertIn("line 2", data["warnings"][0])
+
+    def test_malformed_table_is_a_hard_error(self):
+        Path("tracker.md").write_text(LegacyTableTest.V01_ACTIVE + "| a | b |\n")
+        r = self.run_cli("export", "--json")
+        self.assertNotEqual(r.returncode, 0)
+
+
+FIXTURE = Path(__file__).parent.parent / "dashboard" / "fixtures"
+
+
+class ExportFixtureContractTest(unittest.TestCase):
+    """dashboard/fixtures/export.json is the contract the TypeScript tests
+    also read: if export's output changes, both sides must be updated."""
+
+    def test_fixture_export_matches_golden(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp) / "ws"
+            shutil.copytree(FIXTURE / "workspace", ws)
+            workspace.init_root(ws)
+            r = subprocess.run(
+                [sys.executable, str(Path(__file__).parent / "tracker.py"), "export", "--json"],
+                cwd=ws, capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(json.loads(r.stdout), json.loads((FIXTURE / "export.json").read_text()))
+
+
+class BackfillTest(_CLIBase):
+    def backfill(self, entries):
+        Path("bf.json").write_text(json.dumps(entries))
+        return self.run_cli("backfill", "--events-file", "bf.json")
+
+    def setUp(self):
+        super().setUp()
+        Path("tracker.md").write_text(LegacyTableTest.V01_ACTIVE)
+
+    ENTRIES = [
+        {"company": "Acme", "role": "VP", "type": "add", "ts": "2026-07-01T09:00:00", "to": "Identified"},
+        {"company": "Acme", "role": "VP", "type": "stage", "ts": "2026-07-03T09:00:00",
+         "from": "Identified", "to": "Applied"},
+        {"company": "Acme", "role": "VP", "type": "source", "ts": "2026-07-01T09:00:00", "source": "Job Alert"},
+    ]
+
+    def test_backfill_writes_inferred_events(self):
+        r = self.backfill(self.ENTRIES)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        events = self.events()
+        self.assertEqual(len(events), 3)
+        self.assertTrue(all(e["inferred"] is True for e in events))
+        self.assertEqual(events[1]["ts"], "2026-07-03T09:00:00")
+
+    def test_backfill_is_idempotent(self):
+        self.backfill(self.ENTRIES)
+        r = self.backfill(self.ENTRIES)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.events()), 3)
+        self.assertIn("0 added", r.stdout)
+
+    def test_backfill_dedups_against_same_day_real_event(self):
+        self.ok("update-status", "Acme", "VP", "--stage", "Recruiter Screen")
+        today = tracker.today()
+        r = self.backfill([{"company": "Acme", "role": "VP", "type": "stage",
+                            "ts": today + "T23:59:00", "from": "Applied", "to": "Recruiter Screen"}])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.events()), 1)
+
+    def test_source_fills_blank_but_never_overwrites(self):
+        self.backfill(self.ENTRIES)
+        row = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        self.assertEqual(row["Source"], "Job Alert")
+        self.ok("set-source", "Acme", "VP", "--source", "Referral")
+        self.backfill([{"company": "Acme", "role": "VP", "type": "source",
+                        "ts": "2026-07-02T00:00:00", "source": "Other"}])
+        row = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        self.assertEqual(row["Source"], "Referral")
+
+    def test_invalid_entry_rejects_whole_batch(self):
+        bad = self.ENTRIES + [{"company": "Acme", "role": "VP", "type": "stage",
+                               "ts": "2026-07-05T00:00:00", "from": "Applied", "to": "Vibes"}]
+        r = self.backfill(bad)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Vibes", r.stderr)
+        self.assertEqual(self.events(), [])
+
+    def test_unknown_opportunity_rejects_batch(self):
+        r = self.backfill([{"company": "Nobody", "role": "X", "type": "add",
+                            "ts": "2026-07-01T00:00:00", "to": "Applied"}])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Nobody", r.stderr)
+
+    def test_bad_timestamp_rejects_batch(self):
+        r = self.backfill([{"company": "Acme", "role": "VP", "type": "add",
+                            "ts": "sometime in July", "to": "Applied"}])
+        self.assertEqual(r.returncode, 1)
+
+    def test_close_entry_needs_valid_outcome(self):
+        r = self.backfill([{"company": "Acme", "role": "VP", "type": "close",
+                            "ts": "2026-07-09T00:00:00", "from": "Applied", "outcome": "Meh"}])
+        self.assertEqual(r.returncode, 1)
 
 
 if __name__ == "__main__":

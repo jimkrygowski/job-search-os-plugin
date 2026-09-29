@@ -129,7 +129,8 @@ def now_ts() -> str:
 def append_event(event: dict) -> None:
     """Append one line to tracker_events.jsonl. Callers hold locked() and
     call this only after the table write succeeded."""
-    record = {"ts": now_ts(), **event, "inferred": event.get("inferred", False)}
+    record = {"ts": event.get("ts") or now_ts(), **event,
+              "inferred": event.get("inferred", False)}
     with events_path().open("a") as f:
         f.write(json.dumps(record) + "\n")
 
@@ -385,6 +386,143 @@ def cmd_set_source(args):
     print(f"set source for {args.company} / {args.role}: {source}")
 
 
+def _export_row(row: dict, warnings: list[str], closed: bool) -> dict:
+    stage = canonical_stage(row["Stage"])
+    if stage is None:
+        stage = row["Stage"]
+        warnings.append(
+            f"{row['Company']} / {row['Role']}: unrecognized stage {stage!r} "
+            f"(valid: {', '.join(STAGES)})")
+    out = {
+        "company": row["Company"],
+        "role": row["Role"],
+        "slug": f"{slugify(row['Company'])}/{slugify(row['Role'])}",
+        "stage": stage,
+        "source": row["Source"],
+        "last_activity": row["Last Activity"],
+        "next_action": row["Next Action"],
+        "next_action_date": row["Next Action Date"],
+    }
+    if closed:
+        out["outcome"] = row["Outcome"]
+    return out
+
+
+def export_data() -> dict:
+    """Everything the dashboard needs, as plain JSON. This is the
+    dashboard's only view of tracker state — it never parses the markdown."""
+    with locked():
+        active = read_table(active_path())
+        closed = read_table(closed_path(), CLOSED_COLUMNS)
+        events, event_warnings = read_events()
+    warnings: list[str] = []
+    data = {
+        "schema": 1,
+        "stages": STAGES,
+        "outcomes": OUTCOMES,
+        "sources": SOURCES,
+        "active": [_export_row(r, warnings, closed=False) for r in active],
+        "closed": [_export_row(r, warnings, closed=True) for r in closed],
+        "events": events,
+    }
+    data["warnings"] = event_warnings + warnings
+    return data
+
+
+def cmd_export(args):
+    json.dump(export_data(), sys.stdout, indent=2, ensure_ascii=False)
+    print()
+
+
+def _validate_backfill_entry(entry, known) -> str | None:
+    """Returns an error message, or None. Normalizes names in place."""
+    if not isinstance(entry, dict):
+        return f"not an object: {entry!r}"
+    label = f"{entry.get('company')} / {entry.get('role')}"
+    if (slugify(str(entry.get("company", ""))), slugify(str(entry.get("role", "")))) not in known:
+        return f"{label}: not in tracker.md or tracker_closed.md"
+    try:
+        datetime.datetime.fromisoformat(str(entry.get("ts")))
+    except ValueError:
+        return f"{label}: ts {entry.get('ts')!r} is not an ISO date/time"
+    kind = entry.get("type")
+    stage_fields = {"add": ["to"], "stage": ["from", "to"], "close": ["from"], "source": []}.get(kind)
+    if stage_fields is None:
+        return f"{label}: unknown type {kind!r} (add, stage, close, source)"
+    for field in stage_fields:
+        stage = canonical_stage(str(entry.get(field, "")))
+        if stage is None:
+            return f"{label}: unknown stage {entry.get(field)!r} in {field!r}"
+        entry[field] = stage
+    if kind == "close":
+        outcome = _match(str(entry.get("outcome", "")), OUTCOMES)
+        if outcome is None:
+            return f"{label}: unknown outcome {entry.get('outcome')!r}"
+        entry["outcome"] = outcome
+    if kind == "source" or (kind == "add" and "source" in entry):
+        source = _match(str(entry.get("source", "")), SOURCES)
+        if source is None:
+            return f"{label}: unknown source {entry.get('source')!r}"
+        entry["source"] = source
+    return None
+
+
+def _event_key(e: dict) -> tuple:
+    return (slugify(e["company"]), slugify(e["role"]), e["type"], e.get("from"),
+            e.get("to"), e.get("outcome"), e.get("source"), str(e["ts"])[:10])
+
+
+def cmd_backfill(args):
+    try:
+        entries = json.loads(Path(args.events_file).read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        _fail(f"can't read {args.events_file}: {e}")
+    if not isinstance(entries, list):
+        _fail("backfill input must be a JSON list")
+    with locked():
+        active = read_table(active_path())
+        closed = read_table(closed_path(), CLOSED_COLUMNS)
+        known = {(slugify(r["Company"]), slugify(r["Role"])) for r in active + closed}
+        errors = [err for err in (_validate_backfill_entry(e, known) for e in entries) if err]
+        if errors:
+            _fail("backfill rejected, nothing written:\n  " + "\n  ".join(errors))
+
+        existing, _ = read_events()
+        seen = {_event_key(e) for e in existing}
+        added = sources_set = 0
+        active_dirty = closed_dirty = False
+        for entry in entries:
+            if entry["type"] == "source":
+                # Fills a blank Source only; a Source the user set wins.
+                filled = False
+                for rows in (active, closed):
+                    row = find_row(rows, entry["company"], entry["role"])
+                    if row is not None and not row["Source"]:
+                        row["Source"] = entry["source"]
+                        filled = True
+                        if rows is active:
+                            active_dirty = True
+                        else:
+                            closed_dirty = True
+                if not filled:
+                    continue
+                sources_set += 1
+            key = _event_key(entry)
+            if key in seen:
+                continue
+            seen.add(key)
+            fields = {k: entry[k] for k in ("from", "to", "outcome", "source") if k in entry}
+            append_event({"ts": entry["ts"], "company": entry["company"], "role": entry["role"],
+                          "type": entry["type"], **fields, "inferred": True})
+            added += 1
+        if active_dirty:
+            write_table(active_path(), active, ACTIVE_TITLE)
+        if closed_dirty:
+            write_table(closed_path(), closed, CLOSED_TITLE, CLOSED_COLUMNS)
+    print(f"backfill: {added} added, {len(entries) - added} already present, "
+          f"{sources_set} blank sources filled")
+
+
 def cmd_list(args):
     path = closed_path() if args.closed else active_path()
     title = CLOSED_TITLE if args.closed else ACTIVE_TITLE
@@ -444,6 +582,14 @@ def build_parser():
     p_list = sub.add_parser("list")
     p_list.add_argument("--closed", action="store_true")
     p_list.set_defaults(func=cmd_list)
+
+    p_export = sub.add_parser("export")
+    p_export.add_argument("--json", action="store_true", required=True)
+    p_export.set_defaults(func=cmd_export)
+
+    p_backfill = sub.add_parser("backfill")
+    p_backfill.add_argument("--events-file", required=True)
+    p_backfill.set_defaults(func=cmd_backfill)
 
     p_path = sub.add_parser("opportunity-path")
     p_path.add_argument("company")
