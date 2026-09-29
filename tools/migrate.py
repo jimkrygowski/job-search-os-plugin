@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # never write into the plugin directory
 sys.path.insert(0, str(Path(__file__).parent))
+import tracker  # noqa: E402
 import workspace  # noqa: E402
 
 SKIP_NAMES = {".tracker.lock", ".DS_Store"}
@@ -52,6 +53,34 @@ def plan_dirs(src, dst):
 
 def conflicts(pairs):
     return [d for _, d in pairs if d.exists()]
+
+
+def stage_report(src):
+    """Stage names in the old trackers that aren't canonical. Reported only:
+    the copied files are left exactly as they were."""
+    lines = []
+    for name, columns in (("tracker.md", tracker.ACTIVE_COLUMNS),
+                          ("tracker_closed.md", tracker.CLOSED_COLUMNS)):
+        path = src / name
+        if not path.exists():
+            continue
+        try:
+            rows = tracker.read_table(path, columns)
+        except ValueError as e:
+            lines.append(f"  {name}: couldn't read ({e})")
+            continue
+        for row in rows:
+            stage = row["Stage"]
+            if stage in tracker.STAGES:
+                continue
+            mapped = tracker.canonical_stage(stage)
+            where = f"{name}: {row['Company']} / {row['Role']}"
+            if mapped:
+                lines.append(f"  {where}: {stage!r} -> {mapped!r} (mapped automatically)")
+            else:
+                lines.append(f"  {where}: {stage!r} is not a known stage — "
+                             "fix it with tracker.py update-status")
+    return lines
 
 
 def main():
@@ -97,6 +126,11 @@ def main():
     for _, d in pairs:
         print(f"  {d.relative_to(dst)}")
     print(f"{verb} {len(pairs)} files from {src} to {dst}")
+    report = stage_report(src)
+    if report:
+        print("Stage names that differ from the canonical list "
+              f"({', '.join(tracker.STAGES)}):")
+        print("\n".join(report))
 
 
 if __name__ == "__main__":

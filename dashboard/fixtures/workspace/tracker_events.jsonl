@@ -1,0 +1,93 @@
+{"ts": "2026-06-01T10:00:00", "company": "Acme Robotics", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Referral", "inferred": false}
+{"ts": "2026-06-02T10:00:00", "company": "Cobalt Labs", "role": "Director of Engineering", "type": "add", "to": "Identified", "source": "Applied Cold", "inferred": true}
+{"ts": "2026-06-03T10:00:00", "company": "Acme Robotics", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-06-04T10:00:00", "company": "Bluefin Health", "role": "Head of Platform", "type": "add", "to": "Recruiter Screen", "source": "Recruiter Inbound", "inferred": false}
+{"ts": "2026-06-05T10:00:00", "company": "Cobalt Labs", "role": "Director of Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": true}
+{"ts": "2026-06-08T10:00:00", "company": "Deleted Co", "role": "PM", "type": "add", "to": "Identified", "source": "Other", "inferred": false}
+{"ts": "2026-06-06T10:00:00", "company": "Driftwood", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Job Alert", "inferred": false}
+{"ts": "2026-06-07T10:00:00", "company": "Driftwood", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-06-09T10:00:00", "company": "Ember Analytics", "role": "CTO", "type": "add", "to": "Identified", "source": "Warm Intro", "inferred": false}
+{"ts": "2026-06-10T10:00:00", "company": "Acme Robotics", "role": "VP Engineering", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-06-11T10:00:00", "company": "Bluefin Health", "role": "Head of Platform", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-06-11T10:00:00", "company": "Fjord Systems", "role": "Head of Engineering", "type": "add", "to": "Identified", "source": "Applied Cold", "inferred": false}
+{"ts": "2026-06-20T10:00:00", "company": "Truncated
+{"ts": "2026-06-12T10:00:00", "company": "Fjord Systems", "role": "Head of Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-06-13T10:00:00", "company": "Garnet Pay", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Referral", "inferred": true}
+{"ts": "2026-06-14T10:00:00", "company": "Garnet Pay", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": true}
+{"ts": "2026-06-15T10:00:00", "company": "Ember Analytics", "role": "CTO", "type": "stage", "from": "Identified", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-06-16T10:00:00", "company": "Harbor AI", "role": "Director, Platform", "type": "add", "to": "Identified", "source": "Job Alert", "inferred": false}
+{"ts": "2026-06-17T10:00:00", "company": "Acme Robotics", "role": "VP Engineering", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-06-17T10:00:00", "company": "Harbor AI", "role": "Director, Platform", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-06-19T10:00:00", "company": "Garnet Pay", "role": "VP Engineering", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": true}
+{"ts": "2026-06-19T10:00:00", "company": "Ionic", "role": "VP Engineering", "type": "add", "to": "Recruiter Screen", "source": "Recruiter Inbound", "inferred": false}
+{"ts": "2026-06-21T10:00:00", "company": "Driftwood", "role": "VP Engineering", "type": "close", "from": "Applied", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-06-21T10:00:00", "company": "Juniper Bio", "role": "Head of Data Platform", "type": "add", "to": "Identified", "source": "Applied Cold", "inferred": false}
+{"ts": "2026-06-22T10:00:00", "company": "Bluefin Health", "role": "Head of Platform", "type": "stage", "from": "Hiring Manager", "to": "Interview Loop", "inferred": false}
+{"ts": "2026-06-22T10:00:00", "company": "Juniper Bio", "role": "Head of Data Platform", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-06-23T10:00:00", "company": "Harbor AI", "role": "Director, Platform", "type": "close", "from": "Applied", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-06-23T10:00:00", "company": "Kestrel", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Warm Intro", "inferred": false}
+{"ts": "2026-06-26T10:00:00", "company": "Garnet Pay", "role": "VP Engineering", "type": "close", "from": "Recruiter Screen", "outcome": "Withdrew", "inferred": true}
+{"ts": "2026-06-26T10:00:00", "company": "Kestrel", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-06-26T10:00:00", "company": "Lumen Energy", "role": "Director of Engineering", "type": "add", "to": "Identified", "source": "Job Alert", "inferred": false}
+{"ts": "2026-06-27T10:00:00", "company": "Ionic", "role": "VP Engineering", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-06-27T10:00:00", "company": "Lumen Energy", "role": "Director of Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-06-27T10:00:00", "company": "Northwind", "role": "Engineering Manager", "type": "add", "to": "Identified", "source": "Applied Cold", "inferred": false}
+{"ts": "2026-06-28T10:00:00", "company": "Acme Robotics", "role": "VP Engineering", "type": "stage", "from": "Hiring Manager", "to": "Interview Loop", "inferred": false}
+{"ts": "2026-06-28T10:00:00", "company": "Northwind", "role": "Engineering Manager", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-06-30T10:00:00", "company": "Ember Analytics", "role": "CTO", "type": "stage", "from": "Hiring Manager", "to": "Interview Loop", "inferred": false}
+{"ts": "2026-07-01T10:00:00", "company": "Bluefin Health", "role": "Head of Platform", "type": "close", "from": "Interview Loop", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-07-01T10:00:00", "company": "Orbit Freight", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Referral", "inferred": false}
+{"ts": "2026-07-02T10:00:00", "company": "Kestrel", "role": "VP Engineering", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-07-02T10:00:00", "company": "Orbit Freight", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-07-04T10:00:00", "company": "Ionic", "role": "VP Engineering", "type": "close", "from": "Hiring Manager", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-07-04T10:00:00", "company": "Pinecone Works", "role": "CTO", "type": "add", "to": "Identified", "source": "Other", "inferred": false}
+{"ts": "2026-07-05T10:00:00", "company": "Northwind", "role": "Engineering Manager", "type": "close", "from": "Applied", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-07-06T10:00:00", "company": "Juniper Bio", "role": "Head of Data Platform", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-07-07T10:00:00", "company": "Pinecone Works", "role": "CTO", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-07-09T10:00:00", "company": "Juniper Bio", "role": "Head of Data Platform", "type": "close", "from": "Recruiter Screen", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-07-09T10:00:00", "company": "Orbit Freight", "role": "VP Engineering", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-07-11T10:00:00", "company": "Acme Robotics", "role": "VP Engineering", "type": "stage", "from": "Interview Loop", "to": "Offer", "inferred": false}
+{"ts": "2026-07-11T10:00:00", "company": "Quarry", "role": "Head of Engineering", "type": "add", "to": "Identified", "source": "Job Alert", "inferred": false}
+{"ts": "2026-07-12T10:00:00", "company": "Quarry", "role": "Head of Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-07-15T10:00:00", "company": "Ember Analytics", "role": "CTO", "type": "stage", "from": "Interview Loop", "to": "Offer", "inferred": false}
+{"ts": "2026-07-15T10:00:00", "company": "Kestrel", "role": "VP Engineering", "type": "stage", "from": "Hiring Manager", "to": "Interview Loop", "inferred": false}
+{"ts": "2026-07-16T10:00:00", "company": "Cobalt Labs", "role": "Director of Engineering", "type": "close", "from": "Applied", "outcome": "Ghosted", "inferred": true}
+{"ts": "2026-07-16T10:00:00", "company": "Orbit Freight", "role": "VP Engineering", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-07-21T10:00:00", "company": "Ember Analytics", "role": "CTO", "type": "close", "from": "Offer", "outcome": "Declined Offer", "inferred": false}
+{"ts": "2026-07-21T10:00:00", "company": "Fjord Systems", "role": "Head of Engineering", "type": "close", "from": "Applied", "outcome": "Ghosted", "inferred": false}
+{"ts": "2026-07-23T10:00:00", "company": "Acme Robotics", "role": "VP Engineering", "type": "close", "from": "Offer", "outcome": "Accepted", "inferred": false}
+{"ts": "2026-07-26T10:00:00", "company": "Kestrel", "role": "VP Engineering", "type": "close", "from": "Interview Loop", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-07-29T10:00:00", "company": "Orbit Freight", "role": "VP Engineering", "type": "close", "from": "Hiring Manager", "outcome": "Withdrew", "inferred": false}
+{"ts": "2026-07-31T10:00:00", "company": "Pinecone Works", "role": "CTO", "type": "close", "from": "Applied", "outcome": "Rejected", "inferred": false}
+{"ts": "2026-07-31T10:00:00", "company": "Redwood Cloud", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Referral", "inferred": false}
+{"ts": "2026-08-02T10:00:00", "company": "Redwood Cloud", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-08-10T10:00:00", "company": "Lumen Energy", "role": "Director of Engineering", "type": "close", "from": "Applied", "outcome": "Ghosted", "inferred": false}
+{"ts": "2026-08-10T10:00:00", "company": "Redwood Cloud", "role": "VP Engineering", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-08-15T10:00:00", "company": "Saffron", "role": "Director of Engineering", "type": "add", "to": "Recruiter Screen", "source": "Recruiter Inbound", "inferred": false}
+{"ts": "2026-08-18T10:00:00", "company": "Redwood Cloud", "role": "VP Engineering", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-08-20T10:00:00", "company": "Quarry", "role": "Head of Engineering", "type": "close", "from": "Applied", "outcome": "Ghosted", "inferred": false}
+{"ts": "2026-08-20T10:00:00", "company": "Tidewater", "role": "Head of Platform", "type": "add", "to": "Identified", "source": "Warm Intro", "inferred": false}
+{"ts": "2026-08-21T10:00:00", "company": "Tidewater", "role": "Head of Platform", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-08-24T10:00:00", "company": "Saffron", "role": "Director of Engineering", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-08-25T10:00:00", "company": "Umbra Security", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Applied Cold", "inferred": false}
+{"ts": "2026-08-26T10:00:00", "company": "Umbra Security", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-08-30T10:00:00", "company": "Tidewater", "role": "Head of Platform", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-08-30T10:00:00", "company": "Vantage Maps", "role": "CTO", "type": "add", "to": "Identified", "source": "Warm Intro", "inferred": false}
+{"ts": "2026-09-01T10:00:00", "company": "Vantage Maps", "role": "CTO", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-09-04T10:00:00", "company": "Redwood Cloud", "role": "VP Engineering", "type": "stage", "from": "Hiring Manager", "to": "Interview Loop", "inferred": false}
+{"ts": "2026-09-04T10:00:00", "company": "Willow Learning", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Job Alert", "inferred": false}
+{"ts": "2026-09-05T10:00:00", "company": "Willow Learning", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-09-09T10:00:00", "company": "Vantage Maps", "role": "CTO", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-09-09T10:00:00", "company": "Xylem Data", "role": "Director, Data Engineering", "type": "add", "to": "Identified", "source": "Referral", "inferred": false}
+{"ts": "2026-09-09T10:00:00", "company": "Northwind", "role": "Engineering Manager", "type": "add", "to": "Identified", "source": "Referral", "inferred": false}
+{"ts": "2026-09-10T10:00:00", "company": "Northwind", "role": "Engineering Manager", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-09-13T10:00:00", "company": "Yarrow", "role": "Head of Engineering", "type": "add", "to": "Identified", "source": "Applied Cold", "inferred": false}
+{"ts": "2026-09-14T10:00:00", "company": "Xylem Data", "role": "Director, Data Engineering", "type": "stage", "from": "Identified", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-09-14T10:00:00", "company": "Yarrow", "role": "Head of Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-09-15T10:00:00", "company": "Vantage Maps", "role": "CTO", "type": "stage", "from": "Recruiter Screen", "to": "Hiring Manager", "inferred": false}
+{"ts": "2026-09-18T10:00:00", "company": "Northwind", "role": "Engineering Manager", "type": "stage", "from": "Applied", "to": "Recruiter Screen", "inferred": false}
+{"ts": "2026-09-19T10:00:00", "company": "Vantage Maps", "role": "CTO", "type": "stage", "from": "Hiring Manager", "to": "Interview Loop", "inferred": false}
+{"ts": "2026-09-19T10:00:00", "company": "Zephyr Mobility", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Job Alert", "inferred": false}
+{"ts": "2026-09-21T10:00:00", "company": "Bed | Bath, \"Inc\"", "role": "VP Engineering", "type": "add", "to": "Identified", "source": "Other", "inferred": false}
+{"ts": "2026-09-22T10:00:00", "company": "Bed | Bath, \"Inc\"", "role": "VP Engineering", "type": "stage", "from": "Identified", "to": "Applied", "inferred": false}
+{"ts": "2026-09-25T10:00:00", "company": "Vantage Maps", "role": "CTO", "type": "stage", "from": "Interview Loop", "to": "Offer", "inferred": false}

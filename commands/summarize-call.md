@@ -31,6 +31,9 @@ Summarize a job search call transcript and save the notes to the right place.
      --stage "<stage>" --next-action "<next action>" \
      --next-action-date "<date, if known>"
    ```
+   `<stage>` is one of Identified, Applied, Recruiter Screen, Hiring
+   Manager, Interview Loop, Offer (keep the current stage if the call
+   didn't move things forward).
    Add a one-line summary to the resolved opportunity folder's `notes.md`
    as well — the tracker row itself stays to short scalar fields.
 

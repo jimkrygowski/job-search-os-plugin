@@ -29,7 +29,10 @@ run the `summarize-call` command on it first.
    might mean `career/trajectory.md` needs a revisit — flag it explicitly
    if it contradicts a stated must-have or must-not, and suggest running
    `define-trajectory` in revisit mode if so.
-4. **Recommended next stage / next action.**
+4. **Recommended next stage / next action.** The stage must be one of
+   the canonical stages, in order: Identified, Applied, Recruiter Screen, Hiring Manager, Interview Loop, Offer.
+   (`tracker.py` rejects anything else.) An outcome — the process ended —
+   is not a stage; see Guardrails.
 
 ## Output
 

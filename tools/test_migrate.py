@@ -47,6 +47,23 @@ class MigrateTest(unittest.TestCase):
             self.assertFalse((self.dst / junk).exists(), junk)
         self.assertIn("4 files", r.stdout)
 
+    def test_reports_noncanonical_stages_without_changing_them(self):
+        table = (
+            "# Active Opportunities\n\n"
+            "| Company | Role | Stage | Last Activity | Next Action | Next Action Date |\n"
+            "| --- | --- | --- | --- | --- | --- |\n"
+            "| Acme | VP | Phone Screen | 2026-08-01 |  |  |\n"
+            "| Beta | CTO | Networking | 2026-08-01 |  |  |\n"
+            "| Gamma | CTO | Applied | 2026-08-01 |  |  |\n"
+        )
+        (self.repo / "state" / "tracker.md").write_text(table)
+        r = self.run_cli("--from", str(self.repo), "--to", str(self.dst))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("'Phone Screen' -> 'Recruiter Screen'", r.stdout)
+        self.assertIn("'Networking'", r.stdout)
+        self.assertNotIn("'Applied'", r.stdout)
+        self.assertEqual((self.dst / "tracker.md").read_text(), table)
+
     def test_preserves_empty_directories(self):
         (self.repo / "state" / "opportunity" / "acme" / "vp" / "transcripts").mkdir()
         r = self.run_cli("--from", str(self.repo), "--to", str(self.dst))

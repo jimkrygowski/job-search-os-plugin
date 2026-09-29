@@ -1,0 +1,22 @@
+{
+  "name": "job-search-os-dashboard",
+  "private": true,
+  "description": "Local reflection dashboard for job-search-os. Runtime: Node built-ins only; npm packages are dev-only.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.web.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json --noEmit",
+    "test": "npm run typecheck && node --test \"test/*.test.ts\"",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/d3": "7.4.3",
+    "@types/d3-sankey": "0.12.5",
+    "@types/node": "26.6.3",
+    "typescript": "7.0.2"
+  }
+}

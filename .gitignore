@@ -4,3 +4,6 @@ __pycache__/
 .obsidian/
 .job-search-os.json
 *.swp
+dashboard/node_modules/
+dashboard/test-results/
+dashboard/playwright-report/

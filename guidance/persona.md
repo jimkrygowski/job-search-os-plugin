@@ -95,7 +95,21 @@ the workspace in its own private git repo.
 - `tracker.md` / `tracker_closed.md` — pipeline state.
   Managed only via the plugin's tracker
   (`python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py"`) — never hand-edit
-  these files.
+  these files. Stages are a fixed ladder: Identified, Applied, Recruiter
+  Screen, Hiring Manager, Interview Loop, Offer. When the user decides an
+  opportunity is over, close it with its outcome (Accepted, Rejected,
+  Withdrew, Ghosted, Declined Offer, Passed — declined before any
+  conversation — or Role Filled):
+  `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" close "<Company>" "<Role>" --outcome "<outcome>" --reason "<why>"`
+  To correct a closed row's stage or outcome, use `amend-closed`; to take a
+  row that was never a real opportunity (e.g. a networking contact) out of
+  the tracker, use `remove --reason "<why>"` — only when the user asks.
+  Sources come from the workspace: `"sources"` in `.job-search-os.json` if
+  set (e.g. to split job alerts by feed), otherwise Referral, Recruiter
+  Inbound, Applied Cold, Warm Intro, Job Alert, Other.
+- `tracker_events.jsonl` — every stage change, written by the tracker;
+  it powers the dashboard. Never edit it by hand; `backfill-history`
+  adds past history.
 - `opportunity/<Company>/<Role>/` — per-opportunity documents (JD,
   contacts, notes, tailored resume/cover letter, transcripts). The folder
   name is a slug of whatever Company/Role you typed (lowercased, spaces

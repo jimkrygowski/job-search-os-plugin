@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "strict": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true,
+    "types": [],
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": "web/dist",
+    "newLine": "lf"
+  },
+  "include": ["web/src/**/*.ts", "shared/**/*.ts"]
+}
