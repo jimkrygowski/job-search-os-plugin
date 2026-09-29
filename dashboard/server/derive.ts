@@ -1,5 +1,6 @@
 // Turns tracker.py's export into one record per opportunity. Pure: the
 // clock is passed in, nothing is read or written.
+import { daysSince } from "../shared/dates.ts";
 import type { Export, ExportRow, OpportunityRecord, Payload, PathStep, TrackerEvent } from "../shared/types.ts";
 
 /** Same transform as tracker.py's slugify(); a test pins them together. */
@@ -9,15 +10,6 @@ export function slugify(text: string): string {
 }
 
 const keyOf = (company: string, role: string) => `${slugify(company)}/${slugify(role)}`;
-
-/** Whole days from an ISO date (YYYY-MM-DD…) to `now`'s local calendar date. */
-export function daysSince(isoDate: string, now: Date): number | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
-  if (!m) return null;
-  const then = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.round((today - then) / 86_400_000);
-}
 
 /** Splits one opportunity's events into lifetimes, one per `add`. Events
  * before the first `add` (e.g. a log started mid-pipeline) join the first. */
