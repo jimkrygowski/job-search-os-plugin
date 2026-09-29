@@ -320,7 +320,9 @@ def cmd_update_status(args):
     with locked():
         rows = read_table(active_path())
         row = require_row(rows, args.company, args.role)
-        previous = row["Stage"]
+        # A legacy name ("Screen") is the same stage as its canonical form;
+        # only a real move is a stage change.
+        previous = canonical_stage(row["Stage"]) or row["Stage"]
         row["Stage"] = stage
         if args.next_action is not None:
             row["Next Action"] = args.next_action
@@ -357,7 +359,7 @@ def cmd_close(args):
         closed_rows.append({**row, "Outcome": outcome})
         write_table(closed_path(), closed_rows, CLOSED_TITLE, CLOSED_COLUMNS)
         append_event({"company": row["Company"], "role": row["Role"], "type": "close",
-                      "from": row["Stage"], "outcome": outcome})
+                      "from": canonical_stage(row["Stage"]) or row["Stage"], "outcome": outcome})
 
     notes_dir = opportunity_path(args.company, args.role)
     notes_dir.mkdir(parents=True, exist_ok=True)

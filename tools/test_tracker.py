@@ -630,5 +630,26 @@ class BackfillTest(_CLIBase):
         self.assertEqual(r.returncode, 1)
 
 
+class LegacyStageEventTest(_CLIBase):
+    def setUp(self):
+        super().setUp()
+        Path("tracker.md").write_text(LegacyTableTest.V01_ACTIVE.replace(
+            "| Acme | VP | Applied |", "| Acme | VP | Screen |"))
+
+    def test_normalizing_a_legacy_stage_is_not_a_stage_change(self):
+        self.ok("update-status", "Acme", "VP", "--stage", "Recruiter Screen", "--next-action", "wait")
+        self.assertEqual(self.events(), [])
+
+    def test_events_record_canonical_from_stage(self):
+        self.ok("update-status", "Acme", "VP", "--stage", "Hiring Manager")
+        self.assertEqual(self.events()[-1]["from"], "Recruiter Screen")
+        self.ok("close", "Acme", "VP", "--reason", "r", "--outcome", "Rejected")
+        self.assertEqual(self.events()[-1]["from"], "Hiring Manager")
+
+    def test_close_logs_canonical_from_for_legacy_row(self):
+        self.ok("close", "Acme", "VP", "--reason", "r", "--outcome", "Withdrew")
+        self.assertEqual(self.events()[-1]["from"], "Recruiter Screen")
+
+
 if __name__ == "__main__":
     unittest.main()
