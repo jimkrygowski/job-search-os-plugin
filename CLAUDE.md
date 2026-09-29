@@ -12,7 +12,18 @@ This repo is the plugin's code. It must never contain user state.
   enforces this.
 - The persona/guardrails users see live in `guidance/persona.md`, injected by
   the SessionStart hook (`tools/session_start.py`) only inside a workspace.
-- Tools and tests are stdlib only. Run everything with `tools/run_tests.sh`.
+- Python tools and tests are stdlib only. The dashboard server uses only
+  Node built-ins at runtime; npm packages are dev-only (typescript, type
+  definitions). Run everything with `tools/run_tests.sh`.
+- Dashboard (`dashboard/`): TypeScript run directly by Node >= 22.18, so
+  server code must use erasable syntax only (tsconfig enforces it). The
+  browser code is compiled: after changing `dashboard/web/src` or
+  `dashboard/shared`, run `npm run build` in `dashboard/` and commit
+  `dashboard/web/dist` — `run_tests.sh` fails on a stale build.
+- The dashboard reads tracker state only via `tracker.py export --json`,
+  never by parsing the markdown. `dashboard/fixtures/export.json` is the
+  contract both test suites check; regenerate it with
+  `dashboard/fixtures/make_fixture.py` when the export changes.
 - Validate the manifest with `claude plugin validate .`; try it live with
   `claude --plugin-dir /path/to/this/repo` from inside a test workspace.
 - `job-search-os` is a public identifier (install id + skill prefix). Don't rename it.

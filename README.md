@@ -16,7 +16,7 @@ If you know someone looking for CTO, VP Engineering, Head of Engineering or Seni
 
 ## Install
 
-Requires [Claude Code](https://claude.com/claude-code) and Python 3.
+Requires [Claude Code](https://claude.com/claude-code) and Python 3. The optional [dashboard](#dashboard) also needs Node 22.18 or newer.
 
 ```
 /plugin marketplace add jimkrygowski/job-search-os-plugin
@@ -31,7 +31,7 @@ If you've been using the original repo, create your new workspace folder, start 
 
 ## What it actually does
 
-Thirteen skills, each a focused piece of the search. Invoke them by name (`/job-search-os:<skill>`) or just ask for what you want in a session started in your workspace:
+Fifteen skills, each a focused piece of the search. Invoke them by name (`/job-search-os:<skill>`) or just ask for what you want in a session started in your workspace:
 
 | Skill | What it does |
 |---|---|
@@ -48,8 +48,24 @@ Thirteen skills, each a focused piece of the search. Invoke them by name (`/job-
 | `morning-scan` | A daily pipeline/email/calendar scan, run on demand — not a background job |
 | `file-unemployment-claim` | Walks the weekly unemployment certification — **Massachusetts DUA only** |
 | `migrate` | Imports data from an original job-search-os checkout into a workspace |
+| `dashboard` | Opens a local, read-only web dashboard of your search — see below |
+| `backfill-history` | Reconstructs past stage history from your notes (once), so the dashboard can show full paths |
 
 Plus one command, `/job-search-os:summarize-call`, which turns a call transcript into structured notes.
+
+## Dashboard
+
+`/job-search-os:dashboard` starts a small web server on `127.0.0.1` (never reachable from another machine) and opens a read-only view of your workspace in the browser:
+
+- **Where opportunities go** — a Sankey from how each opportunity arrived (referral, recruiter, job alert, …) through the stages it reached to how it ended, or where it's sitting now. Opportunities with no activity for 21+ days show as *stalled*.
+- **Stage conversion and time in stage** — how many moved past each stage (still-open ones excluded from the rate) and median / p75 days spent there, with small samples flagged as such.
+- **Activity by week** — opportunities added, advanced and closed.
+
+Filter by date added, source and status; click any node, link or row to see the opportunities behind it, then any one of them for its timeline and `notes.md`. Every chart has a table view.
+
+It's powered by `tracker_events.jsonl`, which the tracker appends to on every stage change. For opportunities from before that log existed, run `/job-search-os:backfill-history` once: it reconstructs past history from your notes (asking you when the evidence is ambiguous, never inventing dates), and the Sankey draws reconstructed history striped so it's never confused with recorded history.
+
+The server runs TypeScript directly on Node 22.18+ with no npm install and no runtime dependencies; charts use vendored [d3](https://d3js.org) and d3-sankey, so nothing is fetched from the internet. It stops itself after two idle hours.
 
 ## Grounded in real frameworks
 
@@ -70,7 +86,7 @@ A few things worth pointing at directly if you're evaluating engineering judgmen
 - **Agents are provided tools for common tasks.** For example, `tools/tracker.py` is the sole writer of the pipeline state, with a real file lock around every read-modify-write cycle — proven with a test that fires 8 concurrent writes at it and checks none get silently dropped. This exists because LLMs are by nature non-deterministic and rolling the dice each session by letting the LLM figure out how to edit the tracker is a recipe for corrupted files.
 - **Guardrails are honest about what's structural versus what's a promise.** Inside a workspace, a plugin PreToolUse hook denies the Gmail connector's send, reply, and forward tools — that one's enforced, not just instructed, and it fails closed. It covers only those Gmail tools; sending through any other route (e.g. browser automation) is blocked by instruction only. The other guardrails (never invent experience, never assert an unsupported claim as fact) are instruction-level too, and the system says so rather than overclaiming a guarantee it can't back up.
 - **Real code review happened — by an adversarial agent, not the agent that wrote the code.** The original system was built via spec → implementation plan → independent implementer/reviewer passes on every task, plus whole-branch reviews that caught real cross-task bugs before merge. An external review pass later caught a genuine concurrency bug and a date-parsing bug that silently dropped messages — both fixed, both covered by regression tests. This fork's spec and plan are in [`docs/superpowers/`](docs/superpowers/).
-- **Stdlib only.** Every tool and test has zero pip dependencies. No supply chain to audit for a tool that manages your job search pipeline.
+- **Stdlib only.** Every Python tool and test has zero pip dependencies, and the dashboard server uses only Node built-ins (its npm packages are TypeScript and type definitions, used at development time only; the compiled browser code is committed). No supply chain to audit for a tool that manages your job search pipeline.
 
 ## Layout
 
@@ -80,7 +96,7 @@ The plugin (this repo):
 .claude-plugin/
   plugin.json                  plugin manifest
   marketplace.json             this repo is also its own marketplace
-skills/                        the thirteen skills above (+ their research reviews)
+skills/                        the fifteen skills above (+ their research reviews)
 commands/summarize-call.md     turns a call transcript into structured notes
 hooks/hooks.json               SessionStart (persona + setup check), PreToolUse (Gmail send guard)
 guidance/persona.md            persona and guardrails injected in a workspace
@@ -94,6 +110,11 @@ tools/
   session_start.py, guard_send.py   hook entry points
   migrate.py                   imports an original job-search-os state/
   run_tests.sh                 full test suite + static checks
+dashboard/
+  server/                      Node server (TypeScript, built-ins only): export -> derive -> HTTP
+  shared/                      /api/data types + chart aggregation, used by server tests and browser
+  web/                         index.html, style.css, src/ (TypeScript), dist/ (compiled, committed), vendor/ (d3)
+  fixtures/                    fake workspace + golden export used by both test suites
 ```
 
 Your workspace (anywhere you like, never inside the plugin):
@@ -108,6 +129,7 @@ career/
   resume/master_resume.md      your source-of-truth resume
 opportunity/<company>/<role>/  per-opportunity JD, contacts, notes, tailored resume, transcripts
 tracker.md / tracker_closed.md active / closed pipeline state
+tracker_events.jsonl           every stage change, appended by the tracker (feeds the dashboard)
 ```
 
 ## List it in your own marketplace
@@ -117,7 +139,7 @@ The plugin lives at this repo's root, so any marketplace can list it with a `git
 ```json
 {
   "name": "job-search-os",
-  "source": { "source": "github", "repo": "jimkrygowski/job-search-os-plugin", "ref": "v0.1.0" }
+  "source": { "source": "github", "repo": "jimkrygowski/job-search-os-plugin", "ref": "v0.2.0" }
 }
 ```
 
@@ -126,9 +148,12 @@ Omit `ref` to track the default branch. Releases are tagged `vX.Y.Z`, matching t
 ## Development
 
 ```
-tools/run_tests.sh             # unit tests + static checks on skills
+tools/run_tests.sh             # Python + dashboard tests, static checks, stale-build check
 claude plugin validate .       # manifest + marketplace validation
+cd dashboard && npm run build  # after changing dashboard/web/src or shared/; commit web/dist
 ```
+
+The dashboard needs Node 22.18+; `run_tests.sh` runs `npm ci` in `dashboard/` the first time. To look at it with fake data: `python3 dashboard/fixtures/make_fixture.py` regenerates the fixture; copy `dashboard/fixtures/workspace` somewhere, add a `.job-search-os.json` (`{"schema": 1}`), and run `node dashboard/server/main.ts --workspace <copy>`.
 
 To try changes live, create a scratch workspace (`python3 tools/workspace.py init /tmp/ws`), `cd` into it, and run `claude --plugin-dir /path/to/this/repo`. See `CLAUDE.md` for the rules that keep code and state apart.
 

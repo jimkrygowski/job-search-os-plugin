@@ -56,5 +56,18 @@ class TrackerInvocationsTest(unittest.TestCase):
         self.assertIn("Identified, Applied, Recruiter Screen, Hiring Manager, Interview Loop, Offer", text)
 
 
+class DashboardSkillTest(unittest.TestCase):
+    def setUp(self):
+        self.text = (SKILLS / "dashboard" / "SKILL.md").read_text()
+
+    def test_launches_server_from_plugin_root(self):
+        self.assertIn('node "${CLAUDE_PLUGIN_ROOT}/dashboard/server/main.ts" --workspace', self.text)
+
+    def test_checks_workspace_and_node_version_first(self):
+        self.assertIn('${CLAUDE_PLUGIN_ROOT}/tools/workspace.py" root', self.text)
+        self.assertIn("22.18", self.text)
+        self.assertLess(self.text.index("22.18"), self.text.index("dashboard/server/main.ts"))
+
+
 if __name__ == "__main__":
     unittest.main()
