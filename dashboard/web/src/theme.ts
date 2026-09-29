@@ -20,6 +20,8 @@ const OUTCOME_CLASS: Record<string, string> = {
   Rejected: "c-rejected",
   Withdrew: "c-withdrew",
   Ghosted: "c-ghosted",
+  Passed: "c-passed",
+  "Role Filled": "c-filled",
   Closed: "c-ghosted",
 };
 

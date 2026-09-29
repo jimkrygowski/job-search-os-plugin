@@ -13,7 +13,9 @@
     "Rejected",
     "Withdrew",
     "Ghosted",
-    "Declined Offer"
+    "Declined Offer",
+    "Passed",
+    "Role Filled"
   ],
   "sources": [
     "Referral",

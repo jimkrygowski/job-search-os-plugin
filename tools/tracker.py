@@ -24,7 +24,8 @@ CLOSED_COLUMNS = ACTIVE_COLUMNS + ["Outcome"]
 # The canonical pipeline, in order. The dashboard reads these via
 # `export --json` rather than hard-coding them.
 STAGES = ["Identified", "Applied", "Recruiter Screen", "Hiring Manager", "Interview Loop", "Offer"]
-OUTCOMES = ["Accepted", "Rejected", "Withdrew", "Ghosted", "Declined Offer"]
+# Passed = declined before any conversation; Withdrew = pulled out mid-process.
+OUTCOMES = ["Accepted", "Rejected", "Withdrew", "Ghosted", "Declined Offer", "Passed", "Role Filled"]
 SOURCES = ["Referral", "Recruiter Inbound", "Applied Cold", "Warm Intro", "Job Alert", "Other"]
 
 # Stage names used before the ladder was fixed (lowercased). Anything not
@@ -348,9 +349,12 @@ def cmd_update_status(args):
             row["Next Action"] = args.next_action
         if args.next_action_date is not None:
             row["Next Action Date"] = args.next_action_date
-        row["Last Activity"] = args.last_activity or today()
+        # A correction fixes the record (e.g. free text -> a real stage); it
+        # isn't activity and isn't a move, so neither is recorded.
+        if not args.correction:
+            row["Last Activity"] = args.last_activity or today()
         write_table(active_path(), rows, ACTIVE_TITLE)
-        if previous != stage:
+        if previous != stage and not args.correction:
             append_event({"company": row["Company"], "role": row["Role"], "type": "stage",
                           "from": previous, "to": stage})
     print(f"updated {args.company} / {args.role} -> {stage}")
@@ -369,6 +373,12 @@ def cmd_record_event(args):
 
 def cmd_close(args):
     outcome = require_choice(args.outcome, OUTCOMES, "outcome")
+    when = today()
+    if args.date:
+        try:
+            when = datetime.date.fromisoformat(args.date).isoformat()
+        except ValueError:
+            _fail(f"--date must be YYYY-MM-DD, got {args.date!r}")
     with locked():
         rows = read_table(active_path())
         row = require_row(rows, args.company, args.role)
@@ -379,13 +389,14 @@ def cmd_close(args):
         closed_rows.append({**row, "Outcome": outcome})
         write_table(closed_path(), closed_rows, CLOSED_TITLE, CLOSED_COLUMNS)
         append_event({"company": row["Company"], "role": row["Role"], "type": "close",
-                      "from": canonical_stage(row["Stage"]) or row["Stage"], "outcome": outcome})
+                      "from": canonical_stage(row["Stage"]) or row["Stage"], "outcome": outcome,
+                      **({"ts": f"{when}T00:00:00"} if args.date else {})})
 
     notes_dir = opportunity_path(args.company, args.role)
     notes_dir.mkdir(parents=True, exist_ok=True)
     notes_path = notes_dir / "notes.md"
     with notes_path.open("a") as f:
-        f.write(f"\n- **Closed ({today()}):** {outcome} — {args.reason}\n")
+        f.write(f"\n- **Closed ({when}):** {outcome} — {args.reason}\n")
 
     print(f"closed {args.company} / {args.role}: {outcome}")
 
@@ -623,6 +634,8 @@ def build_parser():
     p_update.add_argument("--next-action")
     p_update.add_argument("--next-action-date")
     p_update.add_argument("--last-activity")
+    p_update.add_argument("--correction", action="store_true",
+                          help="fix a mis-recorded stage: no event, Last Activity unchanged")
     p_update.set_defaults(func=cmd_update_status)
 
     p_event = sub.add_parser("record-event")
@@ -637,6 +650,7 @@ def build_parser():
     p_close.add_argument("role")
     p_close.add_argument("--reason", required=True)
     p_close.add_argument("--outcome", required=True, help=" | ".join(OUTCOMES))
+    p_close.add_argument("--date", help="when it actually ended (YYYY-MM-DD); default today")
     p_close.set_defaults(func=cmd_close)
 
     p_source = sub.add_parser("set-source")

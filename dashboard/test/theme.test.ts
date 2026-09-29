@@ -15,3 +15,10 @@ test("a 9th source or one outside the list never gets a generated hue", () => {
   assert.equal(sourceClass("Job Alert", SOURCES), "c-unknown");
   assert.equal(sourceClass("Unknown", SOURCES), "c-unknown");
 });
+
+test("every outcome has its own fixed class", async () => {
+  const { endClass } = await import("../web/src/theme.ts");
+  assert.equal(endClass("Passed"), "c-passed");
+  assert.equal(endClass("Role Filled"), "c-filled");
+  assert.equal(endClass("Rejected"), "c-rejected");
+});

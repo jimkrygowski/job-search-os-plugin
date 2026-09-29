@@ -98,7 +98,8 @@ the workspace in its own private git repo.
   these files. Stages are a fixed ladder: Identified, Applied, Recruiter
   Screen, Hiring Manager, Interview Loop, Offer. When the user decides an
   opportunity is over, close it with its outcome (Accepted, Rejected,
-  Withdrew, Ghosted, or Declined Offer):
+  Withdrew, Ghosted, Declined Offer, Passed — declined before any
+  conversation — or Role Filled):
   `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" close "<Company>" "<Role>" --outcome "<outcome>" --reason "<why>"`
   To correct a closed row's stage or outcome, use `amend-closed`; to take a
   row that was never a real opportunity (e.g. a networking contact) out of

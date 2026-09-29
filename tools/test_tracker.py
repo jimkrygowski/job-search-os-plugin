@@ -753,5 +753,36 @@ class RemoveTest(_CLIBase):
         self.assertEqual(self.run_cli("remove", "Nope", "X", "--reason", "r").returncode, 1)
 
 
+class CleanupSupportTest(_CLIBase):
+    def test_passed_and_role_filled_are_outcomes(self):
+        for outcome in ("Passed", "Role Filled"):
+            self.ok("add", outcome, "VP", "--stage", "Identified", "--source", "Other")
+            self.ok("close", outcome, "VP", "--reason", "r", "--outcome", outcome.lower())
+        rows = tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
+        self.assertEqual([r["Outcome"] for r in rows], ["Passed", "Role Filled"])
+
+    def test_correction_fixes_stage_without_event_or_activity_change(self):
+        Path("tracker.md").write_text(LegacyTableTest.V01_ACTIVE.replace(
+            "| Acme | VP | Applied |", "| Acme | VP | On Hold — waiting on internal candidate |"))
+        self.ok("update-status", "Acme", "VP", "--stage", "Recruiter Screen", "--correction")
+        row = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        self.assertEqual((row["Stage"], row["Last Activity"]), ("Recruiter Screen", "2026-08-01"))
+        self.assertEqual(self.events(), [])
+
+    def test_close_date_backdates_event_and_note(self):
+        self.ok("add", "Acme", "VP", "--stage", "Identified", "--source", "Other")
+        self.ok("close", "Acme", "VP", "--reason", "comp", "--outcome", "Passed", "--date", "2026-09-02")
+        e = self.events()[-1]
+        self.assertEqual((e["type"], e["ts"]), ("close", "2026-09-02T00:00:00"))
+        notes = Path("opportunity/acme/vp/notes.md").read_text()
+        self.assertIn("**Closed (2026-09-02):** Passed — comp", notes)
+
+    def test_close_date_must_be_a_date(self):
+        self.ok("add", "Acme", "VP", "--stage", "Identified", "--source", "Other")
+        r = self.run_cli("close", "Acme", "VP", "--reason", "r", "--outcome", "Passed", "--date", "last week")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(len(tracker.read_table(tracker.active_path())), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

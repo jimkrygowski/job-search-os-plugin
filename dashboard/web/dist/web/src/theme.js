@@ -17,6 +17,8 @@ const OUTCOME_CLASS = {
     Rejected: "c-rejected",
     Withdrew: "c-withdrew",
     Ghosted: "c-ghosted",
+    Passed: "c-passed",
+    "Role Filled": "c-filled",
     Closed: "c-ghosted",
 };
 export function endClass(label) {
