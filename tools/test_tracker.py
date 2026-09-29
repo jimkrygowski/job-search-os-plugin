@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import os
 import subprocess
 import sys
@@ -29,7 +30,7 @@ class TrackerLibTest(unittest.TestCase):
         rows = [{
             "Company": "Acme", "Role": "VP Engineering", "Stage": "Screen",
             "Last Activity": "2026-08-19", "Next Action": "Follow up",
-            "Next Action Date": "2026-08-26",
+            "Next Action Date": "2026-08-26", "Source": "Referral",
         }]
         tracker.write_table(tracker.active_path(), rows, tracker.ACTIVE_TITLE)
         self.assertEqual(tracker.read_table(tracker.active_path()), rows)
@@ -38,7 +39,7 @@ class TrackerLibTest(unittest.TestCase):
         rows = [{
             "Company": "Bed | Bath & Beyond, Inc.", "Role": "CTO",
             "Stage": "Identified", "Last Activity": "2026-08-20",
-            "Next Action": "", "Next Action Date": "",
+            "Next Action": "", "Next Action Date": "", "Source": "",
         }]
         tracker.write_table(tracker.active_path(), rows, tracker.ACTIVE_TITLE)
         self.assertEqual(tracker.read_table(tracker.active_path()), rows)
@@ -55,7 +56,7 @@ class TrackerLibTest(unittest.TestCase):
         ]
         text = tracker.serialize_table(rows, tracker.ACTIVE_TITLE)
         short_row_line = [l for l in text.splitlines() if l.startswith("| A |")]
-        self.assertEqual(short_row_line, ["| A | Short | S | 2026-01-01 |  |  |"])
+        self.assertEqual(short_row_line, ["| A | Short | S | 2026-01-01 |  |  |  |"])
 
 
 class TrackerCLITest(unittest.TestCase):
@@ -79,7 +80,7 @@ class TrackerCLITest(unittest.TestCase):
     def test_add_then_list_shows_new_row(self):
         result = self.run_cli(
             "add", "Acme", "VP Engineering",
-            "--stage", "Identified", "--next-action-date", "2026-08-26",
+            "--stage", "Identified", "--source", "Other", "--next-action-date", "2026-08-26",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         result = self.run_cli("list")
@@ -87,8 +88,8 @@ class TrackerCLITest(unittest.TestCase):
         self.assertIn("VP Engineering", result.stdout)
 
     def test_add_duplicate_fails(self):
-        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified")
-        result = self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified")
+        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified", "--source", "Other")
+        result = self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified", "--source", "Other")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("already exists", result.stderr)
 
@@ -98,18 +99,18 @@ class TrackerCLITest(unittest.TestCase):
         # so they must be rejected as the same opportunity here too —
         # otherwise the tracker ends up with two active rows pointing at
         # one folder.
-        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified")
-        result = self.run_cli("add", "Acme", "VP  Engineering", "--stage", "Identified")
+        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified", "--source", "Other")
+        result = self.run_cli("add", "Acme", "VP  Engineering", "--stage", "Identified", "--source", "Other")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("already exists", result.stderr)
 
     def test_update_status_on_missing_row_fails(self):
-        result = self.run_cli("update-status", "Nope", "Nowhere", "--stage", "X")
+        result = self.run_cli("update-status", "Nope", "Nowhere", "--stage", "Applied")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not found", result.stderr)
 
     def test_update_status_changes_stage_and_next_action(self):
-        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified")
+        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Identified", "--source", "Other")
         self.run_cli(
             "update-status", "Acme", "VP Engineering",
             "--stage", "Screen", "--next-action", "Call",
@@ -120,7 +121,7 @@ class TrackerCLITest(unittest.TestCase):
         self.assertIn("Call", result.stdout)
 
     def test_record_event_updates_next_action_without_changing_stage(self):
-        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Screen")
+        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Screen", "--source", "Other")
         self.run_cli(
             "record-event", "Acme", "VP Engineering",
             "--event", "Onsite interview", "--date", "2026-09-05",
@@ -130,10 +131,10 @@ class TrackerCLITest(unittest.TestCase):
         self.assertIn("Onsite interview", result.stdout)
 
     def test_close_moves_row_to_closed_and_writes_notes(self):
-        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Screen")
+        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Screen", "--source", "Other")
         result = self.run_cli(
             "close", "Acme", "VP Engineering",
-            "--reason", "Role was put on hold",
+            "--reason", "Role was put on hold", "--outcome", "Withdrew",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -147,7 +148,7 @@ class TrackerCLITest(unittest.TestCase):
         self.assertIn("Role was put on hold", notes)
 
     def test_close_missing_row_fails(self):
-        result = self.run_cli("close", "Nope", "Nowhere", "--reason", "n/a")
+        result = self.run_cli("close", "Nope", "Nowhere", "--reason", "n/a", "--outcome", "Rejected")
         self.assertNotEqual(result.returncode, 0)
 
 
@@ -176,7 +177,7 @@ class TrackerLockingTest(unittest.TestCase):
         # silently drop all but the last writer's update.
         companies = [f"Company{i}" for i in range(8)]
         for c in companies:
-            result = self.run_cli("add", c, "Role", "--stage", "Screen")
+            result = self.run_cli("add", c, "Role", "--stage", "Screen", "--source", "Other")
             self.assertEqual(result.returncode, 0, result.stderr)
 
         def record(c):
@@ -200,7 +201,7 @@ class TrackerLockingTest(unittest.TestCase):
             self.assertEqual(row["Next Action"], f"Interview for {c}")
 
     def test_lock_file_does_not_leak_after_normal_operation(self):
-        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Screen")
+        self.run_cli("add", "Acme", "VP Engineering", "--stage", "Screen", "--source", "Other")
         self.assertFalse(tracker.lock_path().exists())
 
     def test_locked_times_out_when_lock_file_already_held(self):
@@ -289,7 +290,7 @@ class WorkspaceResolutionTest(unittest.TestCase):
     def test_add_from_nested_subdir_writes_workspace_root_tracker(self):
         nested = self.root / "opportunity" / "acme" / "vp"
         nested.mkdir(parents=True)
-        r = self.run_cli(nested, "add", "Acme", "VP", "--stage", "Identified")
+        r = self.run_cli(nested, "add", "Acme", "VP", "--stage", "Identified", "--source", "Other")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue((self.root / "tracker.md").exists())
         self.assertFalse((nested / "tracker.md").exists())
@@ -297,7 +298,7 @@ class WorkspaceResolutionTest(unittest.TestCase):
     def test_outside_workspace_exits_2_and_writes_nothing(self):
         outside = Path(self._tmpdir.name).resolve() / "elsewhere"
         outside.mkdir()
-        r = self.run_cli(outside, "add", "Acme", "VP", "--stage", "Identified")
+        r = self.run_cli(outside, "add", "Acme", "VP", "--stage", "Identified", "--source", "Other")
         self.assertEqual(r.returncode, 2)
         self.assertIn("not inside a job-search-os workspace", r.stderr)
         self.assertEqual(list(outside.iterdir()), [])
@@ -305,6 +306,179 @@ class WorkspaceResolutionTest(unittest.TestCase):
     def test_opportunity_path_is_absolute_under_root(self):
         r = self.run_cli(self.root, "opportunity-path", "Acme Inc.", "VP Eng")
         self.assertEqual(Path(r.stdout.strip()), self.root / "opportunity" / "acme_inc" / "vp_eng")
+
+
+class _CLIBase(unittest.TestCase):
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmpdir = tempfile.TemporaryDirectory()
+        os.chdir(self._tmpdir.name)
+        workspace.init_root(".")
+        self.tracker_py = str(Path(__file__).parent / "tracker.py")
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        self._tmpdir.cleanup()
+
+    def run_cli(self, *args):
+        return subprocess.run(
+            [sys.executable, self.tracker_py, *args],
+            capture_output=True, text=True,
+        )
+
+    def ok(self, *args):
+        r = self.run_cli(*args)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r
+
+    def events(self):
+        path = Path("tracker_events.jsonl")
+        if not path.exists():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+
+class StageValidationTest(_CLIBase):
+    def test_legacy_stage_is_stored_as_canonical(self):
+        self.ok("add", "Acme", "VP", "--stage", "Screen", "--source", "Referral")
+        row = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        self.assertEqual(row["Stage"], "Recruiter Screen")
+
+    def test_canonical_stage_matching_ignores_case(self):
+        self.ok("add", "Acme", "VP", "--stage", "interview loop", "--source", "Referral")
+        row = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        self.assertEqual(row["Stage"], "Interview Loop")
+
+    def test_unknown_stage_is_rejected_with_valid_list(self):
+        r = self.run_cli("add", "Acme", "VP", "--stage", "Vibes", "--source", "Referral")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Recruiter Screen", r.stderr)
+        self.assertFalse(Path("tracker.md").exists())
+
+    def test_add_requires_source(self):
+        r = self.run_cli("add", "Acme", "VP", "--stage", "Applied")
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_add_rejects_unknown_source(self):
+        r = self.run_cli("add", "Acme", "VP", "--stage", "Applied", "--source", "Carrier pigeon")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Warm Intro", r.stderr)
+
+    def test_update_status_rejects_outcome_and_points_to_close(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        r = self.run_cli("update-status", "Acme", "VP", "--stage", "Rejected")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("close", r.stderr)
+
+    def test_close_requires_valid_outcome(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        r = self.run_cli("close", "Acme", "VP", "--reason", "x", "--outcome", "Sad")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Ghosted", r.stderr)
+        r = self.run_cli("close", "Acme", "VP", "--reason", "x")
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_close_records_outcome_column(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        self.ok("close", "Acme", "VP", "--reason", "no reply", "--outcome", "ghosted")
+        rows = tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
+        self.assertEqual(rows[0]["Outcome"], "Ghosted")
+        self.assertEqual(rows[0]["Stage"], "Applied")
+
+
+class LegacyTableTest(_CLIBase):
+    V01_ACTIVE = (
+        "# Active Opportunities\n\n"
+        "| Company | Role | Stage | Last Activity | Next Action | Next Action Date |\n"
+        "| --- | --- | --- | --- | --- | --- |\n"
+        "| Acme | VP | Applied | 2026-08-01 |  |  |\n"
+    )
+    V01_CLOSED = (
+        "# Closed Opportunities\n\n"
+        "| Company | Role | Stage | Last Activity | Next Action | Next Action Date |\n"
+        "| --- | --- | --- | --- | --- | --- |\n"
+        "| Old | CTO | Screen | 2026-07-01 |  |  |\n"
+    )
+
+    def test_v01_table_loads_with_blank_source(self):
+        Path("tracker.md").write_text(self.V01_ACTIVE)
+        rows = tracker.read_table(tracker.active_path())
+        self.assertEqual(rows[0]["Source"], "")
+        self.assertEqual(rows[0]["Stage"], "Applied")
+
+    def test_v01_table_gains_source_column_on_next_write(self):
+        Path("tracker.md").write_text(self.V01_ACTIVE)
+        self.ok("update-status", "Acme", "VP", "--stage", "Recruiter Screen")
+        header = [l for l in Path("tracker.md").read_text().splitlines() if l.startswith("|")][0]
+        self.assertIn("| Source |", header)
+
+    def test_v01_closed_table_upgraded_by_close(self):
+        Path("tracker.md").write_text(self.V01_ACTIVE)
+        Path("tracker_closed.md").write_text(self.V01_CLOSED)
+        self.ok("close", "Acme", "VP", "--reason", "r", "--outcome", "Rejected")
+        rows = tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
+        self.assertEqual([r["Company"] for r in rows], ["Old", "Acme"])
+        self.assertEqual(rows[0]["Outcome"], "")
+        self.assertEqual(rows[1]["Outcome"], "Rejected")
+
+    def test_row_with_wrong_column_count_is_still_an_error(self):
+        Path("tracker.md").write_text(self.V01_ACTIVE + "| Only | three | cells |\n")
+        with self.assertRaises(ValueError):
+            tracker.read_table(tracker.active_path())
+
+
+class EventLogTest(_CLIBase):
+    def test_add_logs_add_event(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        [e] = self.events()
+        self.assertEqual(e["type"], "add")
+        self.assertEqual(e["to"], "Applied")
+        self.assertEqual(e["source"], "Referral")
+        self.assertIs(e["inferred"], False)
+        self.assertRegex(e["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$")
+
+    def test_stage_change_logs_from_and_to(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        self.ok("update-status", "Acme", "VP", "--stage", "Hiring Manager")
+        e = self.events()[-1]
+        self.assertEqual((e["type"], e["from"], e["to"]), ("stage", "Applied", "Hiring Manager"))
+
+    def test_unchanged_stage_and_record_event_log_nothing(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Referral")
+        self.ok("update-status", "Acme", "VP", "--stage", "Applied", "--next-action", "wait")
+        self.ok("record-event", "Acme", "VP", "--event", "Call", "--date", "2026-10-01")
+        self.assertEqual(len(self.events()), 1)
+
+    def test_close_logs_last_stage_and_outcome(self):
+        self.ok("add", "Acme", "VP", "--stage", "Offer", "--source", "Referral")
+        self.ok("close", "Acme", "VP", "--reason", "took it", "--outcome", "Accepted")
+        e = self.events()[-1]
+        self.assertEqual((e["type"], e["from"], e["outcome"]), ("close", "Offer", "Accepted"))
+
+    def test_set_source_updates_row_and_logs(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Other")
+        self.ok("set-source", "Acme", "VP", "--source", "Warm Intro")
+        row = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        self.assertEqual(row["Source"], "Warm Intro")
+        e = self.events()[-1]
+        self.assertEqual((e["type"], e["source"]), ("source", "Warm Intro"))
+
+    def test_set_source_works_on_closed_rows(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Other")
+        self.ok("close", "Acme", "VP", "--reason", "r", "--outcome", "Rejected")
+        self.ok("set-source", "Acme", "VP", "--source", "Job Alert")
+        rows = tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
+        self.assertEqual(rows[0]["Source"], "Job Alert")
+
+    def test_awkward_names_round_trip_through_log(self):
+        name = 'Bed | Bath, "Inc" \u00e9'
+        self.ok("add", name, "VP", "--stage", "Applied", "--source", "Other")
+        self.assertEqual(self.events()[0]["company"], name)
+
+    def test_failed_command_logs_nothing(self):
+        self.run_cli("add", "Acme", "VP", "--stage", "Nope", "--source", "Other")
+        self.run_cli("update-status", "Ghost", "Co", "--stage", "Applied")
+        self.assertEqual(self.events(), [])
 
 
 if __name__ == "__main__":

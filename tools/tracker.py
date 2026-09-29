@@ -7,6 +7,7 @@ markdown tables directly, to avoid corrupting pipeline state.
 """
 import argparse
 import datetime
+import json
 import os
 import re
 import sys
@@ -14,7 +15,32 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-COLUMNS = ["Company", "Role", "Stage", "Last Activity", "Next Action", "Next Action Date"]
+# v0.1 tables have only LEGACY_COLUMNS; they still load (missing cells read
+# as "") and are rewritten with the full column set on their next write.
+LEGACY_COLUMNS = ["Company", "Role", "Stage", "Last Activity", "Next Action", "Next Action Date"]
+ACTIVE_COLUMNS = LEGACY_COLUMNS + ["Source"]
+CLOSED_COLUMNS = ACTIVE_COLUMNS + ["Outcome"]
+
+# The canonical pipeline, in order. The dashboard reads these via
+# `export --json` rather than hard-coding them.
+STAGES = ["Identified", "Applied", "Recruiter Screen", "Hiring Manager", "Interview Loop", "Offer"]
+OUTCOMES = ["Accepted", "Rejected", "Withdrew", "Ghosted", "Declined Offer"]
+SOURCES = ["Referral", "Recruiter Inbound", "Applied Cold", "Warm Intro", "Job Alert", "Other"]
+
+# Stage names used before the ladder was fixed (lowercased). Anything not
+# here is reported, never guessed.
+LEGACY_STAGES = {
+    "new": "Identified", "lead": "Identified", "sourced": "Identified",
+    "application submitted": "Applied",
+    "screen": "Recruiter Screen", "phone screen": "Recruiter Screen",
+    "recruiter call": "Recruiter Screen", "recruiter": "Recruiter Screen",
+    "hm": "Hiring Manager", "hiring manager screen": "Hiring Manager",
+    "hiring manager interview": "Hiring Manager", "hm screen": "Hiring Manager",
+    "onsite": "Interview Loop", "on-site": "Interview Loop", "loop": "Interview Loop",
+    "interview": "Interview Loop", "interviewing": "Interview Loop",
+    "panel": "Interview Loop", "final round": "Interview Loop",
+    "offer received": "Offer", "offer stage": "Offer",
+}
 
 sys.dont_write_bytecode = True  # never write into the plugin directory
 sys.path.insert(0, str(Path(__file__).parent))
@@ -38,6 +64,10 @@ def closed_path() -> Path:
     return state_root() / "tracker_closed.md"
 
 
+def events_path() -> Path:
+    return state_root() / "tracker_events.jsonl"
+
+
 def lock_path() -> Path:
     return state_root() / ".tracker.lock"
 
@@ -58,6 +88,70 @@ def slugify(text: str) -> str:
 
 def opportunity_path(company: str, role: str) -> Path:
     return state_root() / "opportunity" / slugify(company) / slugify(role)
+
+
+def _match(value: str, allowed: list[str]) -> str | None:
+    for a in allowed:
+        if a.lower() == value.strip().lower():
+            return a
+    return None
+
+
+def canonical_stage(name: str) -> str | None:
+    return _match(name, STAGES) or LEGACY_STAGES.get(name.strip().lower())
+
+
+def _fail(message: str):
+    print(f"error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def require_stage(name: str) -> str:
+    stage = canonical_stage(name)
+    if stage:
+        return stage
+    if _match(name, OUTCOMES):
+        _fail(f"{name!r} is an outcome, not a stage — use `close --outcome {name!r}`")
+    _fail(f"unknown stage {name!r}; valid stages: {', '.join(STAGES)}")
+
+
+def require_choice(value: str, allowed: list[str], what: str) -> str:
+    match = _match(value, allowed)
+    if match is None:
+        _fail(f"unknown {what} {value!r}; valid: {', '.join(allowed)}")
+    return match
+
+
+def now_ts() -> str:
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def append_event(event: dict) -> None:
+    """Append one line to tracker_events.jsonl. Callers hold locked() and
+    call this only after the table write succeeded."""
+    record = {"ts": now_ts(), **event, "inferred": event.get("inferred", False)}
+    with events_path().open("a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def read_events() -> tuple[list[dict], list[str]]:
+    path = events_path()
+    if not path.exists():
+        return [], []
+    events, warnings = [], []
+    for n, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            warnings.append(f"line {n} of tracker_events.jsonl is not valid JSON")
+            continue
+        if not isinstance(event, dict) or not {"ts", "company", "role", "type"} <= event.keys():
+            warnings.append(f"line {n} of tracker_events.jsonl is missing required fields")
+            continue
+        events.append(event)
+    return events, warnings
 
 
 @contextmanager
@@ -126,40 +220,45 @@ def split_row(line: str) -> list[str]:
     return parts
 
 
-def parse_table(text: str) -> list[dict]:
+def parse_table(text: str, columns: list[str] = ACTIVE_COLUMNS) -> list[dict]:
     lines = [line for line in text.splitlines() if line.strip().startswith("|")]
     if len(lines) < 2:
         return []
+    header = [unescape_cell(c) for c in split_row(lines[0])]
+    if header != columns[:len(header)] or len(header) < len(LEGACY_COLUMNS):
+        raise ValueError(f"Unrecognized tracker header: {lines[0]!r}")
     rows = []
     for line in lines[2:]:  # skip header + separator
         cells = split_row(line)
-        if len(cells) != len(COLUMNS):
+        if len(cells) != len(header):
             raise ValueError(
-                f"Malformed row (expected {len(COLUMNS)} columns, got {len(cells)}): {line!r}"
+                f"Malformed row (expected {len(header)} columns, got {len(cells)}): {line!r}"
             )
-        rows.append({col: unescape_cell(cell) for col, cell in zip(COLUMNS, cells)})
+        row = {col: "" for col in columns}
+        row.update({col: unescape_cell(cell) for col, cell in zip(header, cells)})
+        rows.append(row)
     return rows
 
 
-def serialize_table(rows: list[dict], title: str) -> str:
-    header = "| " + " | ".join(COLUMNS) + " |"
-    separator = "| " + " | ".join(["---"] * len(COLUMNS)) + " |"
+def serialize_table(rows: list[dict], title: str, columns: list[str] = ACTIVE_COLUMNS) -> str:
+    header = "| " + " | ".join(columns) + " |"
+    separator = "| " + " | ".join(["---"] * len(columns)) + " |"
     lines = [f"# {title}", "", header, separator]
     for row in rows:
-        cells = [escape_cell(row.get(col, "")) for col in COLUMNS]
+        cells = [escape_cell(row.get(col, "")) for col in columns]
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"
 
 
-def read_table(path: Path) -> list[dict]:
+def read_table(path: Path, columns: list[str] = ACTIVE_COLUMNS) -> list[dict]:
     if not path.exists():
         return []
-    return parse_table(path.read_text())
+    return parse_table(path.read_text(), columns)
 
 
-def write_table(path: Path, rows: list[dict], title: str) -> None:
+def write_table(path: Path, rows: list[dict], title: str, columns: list[str] = ACTIVE_COLUMNS) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(serialize_table(rows, title))
+    path.write_text(serialize_table(rows, title, columns))
 
 
 def find_row(rows, company, role):
@@ -180,7 +279,17 @@ def today() -> str:
     return datetime.date.today().isoformat()
 
 
+def require_row(rows, company, role):
+    row = find_row(rows, company, role)
+    if row is None:
+        print(f"error: {company} / {role} not found in tracker.md", file=sys.stderr)
+        sys.exit(1)
+    return row
+
+
 def cmd_add(args):
+    stage = require_stage(args.stage)
+    source = require_choice(args.source, SOURCES, "source")
     with locked():
         rows = read_table(active_path())
         if find_row(rows, args.company, args.role):
@@ -193,39 +302,41 @@ def cmd_add(args):
         rows.append({
             "Company": args.company,
             "Role": args.role,
-            "Stage": args.stage,
+            "Stage": stage,
             "Last Activity": args.last_activity or today(),
             "Next Action": args.next_action or "",
             "Next Action Date": args.next_action_date or "",
+            "Source": source,
         })
         write_table(active_path(), rows, ACTIVE_TITLE)
+        append_event({"company": args.company, "role": args.role, "type": "add",
+                      "to": stage, "source": source})
     print(f"added {args.company} / {args.role}")
 
 
 def cmd_update_status(args):
+    stage = require_stage(args.stage)
     with locked():
         rows = read_table(active_path())
-        row = find_row(rows, args.company, args.role)
-        if row is None:
-            print(f"error: {args.company} / {args.role} not found in tracker.md", file=sys.stderr)
-            sys.exit(1)
-        row["Stage"] = args.stage
+        row = require_row(rows, args.company, args.role)
+        previous = row["Stage"]
+        row["Stage"] = stage
         if args.next_action is not None:
             row["Next Action"] = args.next_action
         if args.next_action_date is not None:
             row["Next Action Date"] = args.next_action_date
         row["Last Activity"] = args.last_activity or today()
         write_table(active_path(), rows, ACTIVE_TITLE)
-    print(f"updated {args.company} / {args.role} -> {args.stage}")
+        if previous != stage:
+            append_event({"company": row["Company"], "role": row["Role"], "type": "stage",
+                          "from": previous, "to": stage})
+    print(f"updated {args.company} / {args.role} -> {stage}")
 
 
 def cmd_record_event(args):
     with locked():
         rows = read_table(active_path())
-        row = find_row(rows, args.company, args.role)
-        if row is None:
-            print(f"error: {args.company} / {args.role} not found in tracker.md", file=sys.stderr)
-            sys.exit(1)
+        row = require_row(rows, args.company, args.role)
         row["Next Action"] = args.event
         row["Next Action Date"] = args.date
         row["Last Activity"] = today()
@@ -234,34 +345,53 @@ def cmd_record_event(args):
 
 
 def cmd_close(args):
+    outcome = require_choice(args.outcome, OUTCOMES, "outcome")
     with locked():
         rows = read_table(active_path())
-        row = find_row(rows, args.company, args.role)
-        if row is None:
-            print(f"error: {args.company} / {args.role} not found in tracker.md", file=sys.stderr)
-            sys.exit(1)
+        row = require_row(rows, args.company, args.role)
         rows.remove(row)
         write_table(active_path(), rows, ACTIVE_TITLE)
 
-        closed_rows = read_table(closed_path())
-        closed_rows.append(row)
-        write_table(closed_path(), closed_rows, CLOSED_TITLE)
+        closed_rows = read_table(closed_path(), CLOSED_COLUMNS)
+        closed_rows.append({**row, "Outcome": outcome})
+        write_table(closed_path(), closed_rows, CLOSED_TITLE, CLOSED_COLUMNS)
+        append_event({"company": row["Company"], "role": row["Role"], "type": "close",
+                      "from": row["Stage"], "outcome": outcome})
 
     notes_dir = opportunity_path(args.company, args.role)
     notes_dir.mkdir(parents=True, exist_ok=True)
     notes_path = notes_dir / "notes.md"
     with notes_path.open("a") as f:
-        f.write(f"\n- **Closed ({today()}):** {args.reason}\n")
+        f.write(f"\n- **Closed ({today()}):** {outcome} — {args.reason}\n")
 
-    print(f"closed {args.company} / {args.role}: {args.reason}")
+    print(f"closed {args.company} / {args.role}: {outcome}")
+
+
+def cmd_set_source(args):
+    source = require_choice(args.source, SOURCES, "source")
+    with locked():
+        for path, title, columns in ((active_path(), ACTIVE_TITLE, ACTIVE_COLUMNS),
+                                     (closed_path(), CLOSED_TITLE, CLOSED_COLUMNS)):
+            rows = read_table(path, columns)
+            row = find_row(rows, args.company, args.role)
+            if row is not None:
+                row["Source"] = source
+                write_table(path, rows, title, columns)
+                append_event({"company": row["Company"], "role": row["Role"],
+                              "type": "source", "source": source})
+                break
+        else:
+            _fail(f"{args.company} / {args.role} not found in tracker.md or tracker_closed.md")
+    print(f"set source for {args.company} / {args.role}: {source}")
 
 
 def cmd_list(args):
     path = closed_path() if args.closed else active_path()
     title = CLOSED_TITLE if args.closed else ACTIVE_TITLE
+    columns = CLOSED_COLUMNS if args.closed else ACTIVE_COLUMNS
     with locked():
-        rows = read_table(path)
-    print(serialize_table(rows, title))
+        rows = read_table(path, columns)
+    print(serialize_table(rows, title, columns))
 
 
 def cmd_opportunity_path(args):
@@ -276,6 +406,7 @@ def build_parser():
     p_add.add_argument("company")
     p_add.add_argument("role")
     p_add.add_argument("--stage", required=True)
+    p_add.add_argument("--source", required=True, help=" | ".join(SOURCES))
     p_add.add_argument("--next-action", default="")
     p_add.add_argument("--next-action-date", default="")
     p_add.add_argument("--last-activity")
@@ -301,7 +432,14 @@ def build_parser():
     p_close.add_argument("company")
     p_close.add_argument("role")
     p_close.add_argument("--reason", required=True)
+    p_close.add_argument("--outcome", required=True, help=" | ".join(OUTCOMES))
     p_close.set_defaults(func=cmd_close)
+
+    p_source = sub.add_parser("set-source")
+    p_source.add_argument("company")
+    p_source.add_argument("role")
+    p_source.add_argument("--source", required=True, help=" | ".join(SOURCES))
+    p_source.set_defaults(func=cmd_set_source)
 
     p_list = sub.add_parser("list")
     p_list.add_argument("--closed", action="store_true")
