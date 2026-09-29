@@ -30,9 +30,11 @@ browser. If either is missing, Tier 4 reports it and the scan continues.
    slower, so running it last keeps it from delaying the others.
 5. Summarize — cross-check findings from all four tiers against
    `tracker.md` and flag any mismatches (e.g. a "next action" already
-   resolved, a stage that's stale). List any active opportunity whose
-   Last Activity is 21 or more days ago (the dashboard's "stalled" rule)
-   as a candidate to follow up on or close — never close it yourself.
+   resolved, a stage that's stale). List any active opportunity that is
+   stalled by the dashboard's rule — Last Activity at least `stallDays`
+   days ago, where `stallDays` is `dashboard.stallDays` in the workspace's
+   `.job-search-os.json` (default 21) — as a candidate to follow up on or
+   close. Never close it yourself.
 
 ## Tier 1 — Pipeline Emails
 Build the contact list dynamically rather than using a fixed list: read

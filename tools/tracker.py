@@ -401,13 +401,22 @@ def cmd_close(args):
     print(f"closed {args.company} / {args.role}: {outcome}")
 
 
+def last_match(rows, company, role):
+    """The most recent row for an opportunity. tracker_closed.md can hold one
+    row per past application to the same company/role (closed, re-added,
+    closed again); corrections are meant for the latest one."""
+    target = (slugify(company), slugify(role))
+    matches = [r for r in rows if (slugify(r["Company"]), slugify(r["Role"])) == target]
+    return matches[-1] if matches else None
+
+
 def cmd_set_source(args):
     source = require_choice(args.source, workspace_sources(), "source")
     with locked():
         for path, title, columns in ((active_path(), ACTIVE_TITLE, ACTIVE_COLUMNS),
                                      (closed_path(), CLOSED_TITLE, CLOSED_COLUMNS)):
             rows = read_table(path, columns)
-            row = find_row(rows, args.company, args.role)
+            row = last_match(rows, args.company, args.role)
             if row is not None:
                 row["Source"] = source
                 write_table(path, rows, title, columns)
@@ -429,11 +438,9 @@ def cmd_amend_closed(args):
     outcome = require_choice(args.outcome, OUTCOMES, "outcome") if args.outcome is not None else None
     with locked():
         rows = read_table(closed_path(), CLOSED_COLUMNS)
-        target = (slugify(args.company), slugify(args.role))
-        matches = [r for r in rows if (slugify(r["Company"]), slugify(r["Role"])) == target]
-        if not matches:
+        row = last_match(rows, args.company, args.role)
+        if row is None:
             _fail(f"{args.company} / {args.role} not found in tracker_closed.md")
-        row = matches[-1]
         if stage is not None:
             row["Stage"] = stage
         if outcome is not None:

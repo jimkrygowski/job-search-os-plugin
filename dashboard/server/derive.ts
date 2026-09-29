@@ -22,9 +22,33 @@ function lifetimes(events: TrackerEvent[]): TrackerEvent[][] {
   return out;
 }
 
-function buildRecord(row: ExportRow, status: "active" | "closed", key: string,
-                     events: TrackerEvent[], stallDays: number, now: Date): OpportunityRecord {
-  const path: PathStep[] = [];
+/** The tracker row's stage is the truth. `update-status --correction` and
+ * `amend-closed` change it without writing an event, so the event path can
+ * lag or overshoot it; bring the path in line, marking the fix as inferred. */
+function reconcile(path: PathStep[], stage: string, lastActivity: string, stages: string[]): PathStep[] {
+  const last = path[path.length - 1]!;
+  if (last.stage === stage) return path;
+  const at = path.map((s) => s.stage).lastIndexOf(stage);
+  if (at !== -1) return path.slice(0, at + 1); // corrected back to a stage it did reach
+  let kept = path;
+  let cut: PathStep | undefined;
+  const idx = stages.indexOf(stage);
+  if (idx !== -1) {
+    // Steps past the corrected stage were mis-recorded; the correction
+    // takes the place (and date) of the first of them.
+    const firstPast = path.findIndex((s) => stages.indexOf(s.stage) > idx);
+    if (firstPast !== -1) {
+      cut = path[firstPast];
+      kept = path.slice(0, firstPast);
+    }
+  }
+  const ts = cut?.ts ?? (lastActivity && lastActivity >= last.ts.slice(0, 10) ? lastActivity : last.ts);
+  return [...kept, { stage, ts, inferred: true }];
+}
+
+function buildRecord(row: ExportRow, status: "active" | "closed", key: string, events: TrackerEvent[],
+                     stages: string[], stallDays: number, now: Date): OpportunityRecord {
+  let path: PathStep[] = [];
   let closedAt: string | null = null;
   for (const e of events) {
     if ((e.type === "add" || e.type === "stage") && e.to) {
@@ -36,6 +60,7 @@ function buildRecord(row: ExportRow, status: "active" | "closed", key: string,
   if (path.length === 0) {
     path.push({ stage: row.stage, ts: row.last_activity, inferred: true });
   }
+  path = reconcile(path, row.stage, row.last_activity, stages);
   const idle = daysSince(row.last_activity, now);
   return {
     company: row.company,
@@ -65,12 +90,35 @@ export function derive(exp: Export, opts: { stallDays: number; now: Date }): Pay
   // (a close dated "2026-09-02" is 00:00), so clock time alone would put a
   // same-day close before the add that started it.
   const RANK: Record<TrackerEvent["type"], number> = { add: 0, stage: 1, source: 2, close: 3, remove: 4 };
+  // Exception: real (non-inferred) events are logged as they happen, so a
+  // real re-add logged after a real close on the same day starts a new
+  // application; it and that day's later real events sort after the close.
+  const reopened = new Set<TrackerEvent>();
+  const closedOn = new Map<string, string>();
+  const reopenedOn = new Map<string, string>();
+  for (const e of exp.events) { // file order
+    if (e.inferred) continue;
+    const k = keyOf(e.company, e.role);
+    const day = e.ts.slice(0, 10);
+    if (e.type === "close") closedOn.set(k, day);
+    else if (e.type === "add" && closedOn.get(k) === day) reopenedOn.set(k, day);
+    if (reopenedOn.get(k) === day && e.type !== "close") reopened.add(e);
+  }
+  const rank = (e: TrackerEvent) => (reopened.has(e) ? 10 : 0) + RANK[e.type];
   const ordered = [...exp.events].sort((a, b) =>
-    a.ts.slice(0, 10).localeCompare(b.ts.slice(0, 10)) || RANK[a.type] - RANK[b.type] || a.ts.localeCompare(b.ts));
+    a.ts.slice(0, 10).localeCompare(b.ts.slice(0, 10)) || rank(a) - rank(b) || a.ts.localeCompare(b.ts));
   for (const e of ordered) {
     const k = keyOf(e.company, e.role);
-    // `remove` means "this was never a real opportunity": forget its history.
-    eventsByKey.set(k, e.type === "remove" ? [] : [...(eventsByKey.get(k) ?? []), e]);
+    const events = eventsByKey.get(k) ?? [];
+    if (e.type === "remove") {
+      // `remove` means the current application was never a real opportunity:
+      // drop its events, but keep earlier (closed) applications' history.
+      const lastAdd = events.map((x) => x.type).lastIndexOf("add");
+      const lastClose = events.map((x) => x.type).lastIndexOf("close");
+      eventsByKey.set(k, events.slice(0, lastAdd > lastClose ? lastAdd : lastClose + 1));
+    } else {
+      eventsByKey.set(k, [...events, e]);
+    }
   }
 
   // Records list active opportunities first. Within one opportunity the
@@ -106,7 +154,7 @@ export function derive(exp: Export, opts: { stallDays: number; now: Date }): Pay
       const events = lives[i + offset] ?? [];
       if (events.some((e) => e.type === "add" || e.type === "stage")) anyHistory = true;
       const key = slots.length > 1 && slot.status === "closed" ? `${k}#closed-${i + 1}` : k;
-      records.push(buildRecord(slot.row, slot.status, key, events, opts.stallDays, opts.now));
+      records.push(buildRecord(slot.row, slot.status, key, events, exp.stages, opts.stallDays, opts.now));
     });
   }
 

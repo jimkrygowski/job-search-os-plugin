@@ -753,6 +753,26 @@ class RemoveTest(_CLIBase):
         self.assertEqual(self.run_cli("remove", "Nope", "X", "--reason", "r").returncode, 1)
 
 
+class RepeatApplicationTest(_CLIBase):
+    def test_set_source_edits_the_most_recent_closed_row(self):
+        for outcome in ("Rejected", "Ghosted"):
+            self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Other")
+            self.ok("close", "Acme", "VP", "--reason", "r", "--outcome", outcome)
+        self.ok("set-source", "Acme", "VP", "--source", "Referral")
+        rows = tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
+        self.assertEqual([(r["Outcome"], r["Source"]) for r in rows],
+                         [("Rejected", "Other"), ("Ghosted", "Referral")])
+
+    def test_set_source_prefers_the_active_row(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Other")
+        self.ok("close", "Acme", "VP", "--reason", "r", "--outcome", "Rejected")
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Other")
+        self.ok("set-source", "Acme", "VP", "--source", "Referral")
+        active = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        closed = tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
+        self.assertEqual((active["Source"], closed[0]["Source"]), ("Referral", "Other"))
+
+
 class CleanupSupportTest(_CLIBase):
     def test_passed_and_role_filled_are_outcomes(self):
         for outcome in ("Passed", "Role Filled"):

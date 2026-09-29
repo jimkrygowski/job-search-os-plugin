@@ -194,3 +194,92 @@ test("same-day events order as add → stage → close regardless of clock time"
   assert.deepEqual(p.records[0]!.path.map((s) => s.stage), ["Identified", "Applied"]);
   assert.equal(p.records[0]!.closedAt, "2026-09-02T00:00:00");
 });
+
+// Review finding 1: a --correction / amend-closed changes the row's stage
+// without an event; the path must follow the corrected stage.
+test("a forward correction extends the path to the corrected stage", () => {
+  const p = derive(exp({
+    active: [row("Acme", "VP", { stage: "Interview Loop", last_activity: "2026-09-10" })],
+    events: [
+      ev("Acme", "VP", "add", "2026-09-01T10:00:00", { to: "Applied" }),
+      ev("Acme", "VP", "stage", "2026-09-05T10:00:00", { from: "Applied", to: "Recruiter Screen" }),
+    ],
+  }), opts);
+  const r = p.records[0]!;
+  assert.deepEqual(r.path.map((s) => [s.stage, s.inferred]),
+    [["Applied", false], ["Recruiter Screen", false], ["Interview Loop", true]]);
+  assert.equal(r.path[2]!.ts, "2026-09-10");
+});
+
+test("a backward correction drops the steps past the corrected stage", () => {
+  const p = derive(exp({
+    closed: [row("Acme", "VP", { stage: "Hiring Manager", outcome: "Withdrew" })],
+    events: [
+      ev("Acme", "VP", "add", "2026-06-22T10:00:00", { to: "Recruiter Screen" }),
+      ev("Acme", "VP", "stage", "2026-07-01T10:00:00", { from: "Recruiter Screen", to: "Interview Loop" }),
+      ev("Acme", "VP", "close", "2026-07-21T10:00:00", { from: "Interview Loop", outcome: "Withdrew" }),
+    ],
+  }), opts);
+  const r = p.records[0]!;
+  assert.deepEqual(r.path.map((s) => s.stage), ["Recruiter Screen", "Hiring Manager"]);
+  assert.equal(r.path[1]!.ts, "2026-07-01T10:00:00"); // when the mis-recorded move happened
+  assert.equal(r.path[1]!.inferred, true);
+});
+
+test("a correction to an earlier stage already on the path truncates to it", () => {
+  const p = derive(exp({
+    active: [row("Acme", "VP", { stage: "Applied" })],
+    events: [
+      ev("Acme", "VP", "add", "2026-09-01T10:00:00", { to: "Applied" }),
+      ev("Acme", "VP", "stage", "2026-09-05T10:00:00", { from: "Applied", to: "Offer" }),
+    ],
+  }), opts);
+  assert.deepEqual(p.records[0]!.path.map((s) => s.stage), ["Applied"]);
+});
+
+test("a consistent path is left untouched", () => {
+  const p = derive(exp({
+    active: [row("Acme", "VP", { stage: "Recruiter Screen" })],
+    events: [
+      ev("Acme", "VP", "add", "2026-09-01T10:00:00", { to: "Applied" }),
+      ev("Acme", "VP", "stage", "2026-09-05T10:00:00", { from: "Applied", to: "Recruiter Screen" }),
+    ],
+  }), opts);
+  assert.deepEqual(p.records[0]!.path.map((s) => s.inferred), [false, false]);
+});
+
+// Review finding 2: `remove` drops only the lifetime it ends, and a
+// same-day close + re-add keeps each event in its own lifetime.
+test("removing a re-application keeps the earlier closed lifetime's history", () => {
+  const p = derive(exp({
+    closed: [row("Acme", "VP", { stage: "Hiring Manager", outcome: "Rejected" })],
+    events: [
+      ev("Acme", "VP", "add", "2026-06-01T10:00:00", { to: "Applied" }),
+      ev("Acme", "VP", "stage", "2026-06-10T10:00:00", { from: "Applied", to: "Hiring Manager" }),
+      ev("Acme", "VP", "close", "2026-06-20T10:00:00", { from: "Hiring Manager", outcome: "Rejected" }),
+      ev("Acme", "VP", "add", "2026-09-01T10:00:00", { to: "Identified" }),
+      ev("Acme", "VP", "remove", "2026-09-02T10:00:00"),
+    ],
+  }), opts);
+  assert.deepEqual(p.warnings, []);
+  const r = p.records[0]!;
+  assert.deepEqual(r.path.map((s) => s.stage), ["Applied", "Hiring Manager"]);
+  assert.equal(r.closedAt, "2026-06-20T10:00:00");
+});
+
+test("a same-day close and re-add stay in their own lifetimes", () => {
+  const p = derive(exp({
+    active: [row("Acme", "VP", { stage: "Identified" })],
+    closed: [row("Acme", "VP", { stage: "Applied", outcome: "Rejected" })],
+    events: [
+      ev("Acme", "VP", "add", "2026-09-01T10:00:00", { to: "Applied" }),
+      ev("Acme", "VP", "close", "2026-09-15T09:00:00", { from: "Applied", outcome: "Rejected" }),
+      ev("Acme", "VP", "add", "2026-09-15T15:00:00", { to: "Identified" }),
+    ],
+  }), opts);
+  assert.deepEqual(p.warnings, []);
+  const closed = p.records.find((r) => r.status === "closed")!;
+  const active = p.records.find((r) => r.status === "active")!;
+  assert.equal(closed.closedAt, "2026-09-15T09:00:00");
+  assert.deepEqual(active.path.map((s) => s.ts), ["2026-09-15T15:00:00"]);
+});

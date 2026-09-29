@@ -69,5 +69,12 @@ class DashboardSkillTest(unittest.TestCase):
         self.assertLess(self.text.index("22.18"), self.text.index("dashboard/server/main.ts"))
 
 
+class StalledRuleTest(unittest.TestCase):
+    def test_morning_scan_uses_the_configured_stall_threshold(self):
+        text = (SKILLS / "morning-scan" / "SKILL.md").read_text()
+        self.assertIn("stallDays", text)
+        self.assertNotIn("21 or more days", text)
+
+
 if __name__ == "__main__":
     unittest.main()
