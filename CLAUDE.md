@@ -20,6 +20,10 @@ This repo is the plugin's code. It must never contain user state.
   browser code is compiled: after changing `dashboard/web/src` or
   `dashboard/shared`, run `npm run build` in `dashboard/` and commit
   `dashboard/web/dist` — `run_tests.sh` fails on a stale build.
+- UI changes: run `npm run test:e2e` in `dashboard/` (Playwright, real
+  browser against temp copies of the fixture). Assert what the user sees
+  (visibility, focus), not DOM properties — a `hidden` drawer that stayed
+  on screen passed a property check.
 - The dashboard reads tracker state only via `tracker.py export --json`,
   never by parsing the markdown. `dashboard/fixtures/export.json` is the
   contract both test suites check; regenerate it with

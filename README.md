@@ -153,6 +153,7 @@ Omit `ref` to track the default branch. Releases are tagged `vX.Y.Z`, matching t
 tools/run_tests.sh             # Python + dashboard tests, static checks, stale-build check
 claude plugin validate .       # manifest + marketplace validation
 cd dashboard && npm run build  # after changing dashboard/web/src or shared/; commit web/dist
+cd dashboard && npm run test:e2e  # Playwright UI tests (first: npx playwright install chromium)
 ```
 
 The dashboard needs Node 22.18+; `run_tests.sh` runs `npm ci` in `dashboard/` the first time. To look at it with fake data: `python3 dashboard/fixtures/make_fixture.py` regenerates the fixture; copy `dashboard/fixtures/workspace` somewhere, add a `.job-search-os.json` (`{"schema": 1}`), and run `node dashboard/server/main.ts --workspace <copy>`.

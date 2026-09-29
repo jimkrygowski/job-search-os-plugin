@@ -48,6 +48,9 @@
 }
 
 * { box-sizing: border-box; }
+/* The hidden attribute must beat component display rules (e.g. .drawer's
+   display: flex), or "hidden" elements stay on screen. */
+[hidden] { display: none !important; }
 body {
   margin: 0; background: var(--page); color: var(--ink);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
