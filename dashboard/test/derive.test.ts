@@ -168,3 +168,15 @@ test("a removed-then-re-added opportunity keeps only its new lifetime", () => {
   assert.deepEqual(p.records[0]!.path.map((s) => s.ts), ["2026-09-01T10:00:00"]);
   assert.deepEqual(p.warnings, []);
 });
+
+test("close and source events alone are not stage history", () => {
+  const p = derive(exp({
+    closed: [row("Acme", "VP", { outcome: "Passed" })],
+    events: [
+      ev("Acme", "VP", "close", "2026-09-02T00:00:00", { from: "Identified", outcome: "Passed" }),
+      ev("Acme", "VP", "source", "2026-09-29T09:40:00", { source: "Other" }),
+    ],
+  }), opts);
+  assert.equal(p.noHistory, true);
+  assert.equal(p.records[0]!.closedAt, "2026-09-02T00:00:00");
+});

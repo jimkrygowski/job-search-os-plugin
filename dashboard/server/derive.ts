@@ -97,7 +97,7 @@ export function derive(exp: Export, opts: { stallDays: number; now: Date }): Pay
     }
     slots.forEach((slot, i) => {
       const events = lives[i + offset] ?? [];
-      if (events.length) anyHistory = true;
+      if (events.some((e) => e.type === "add" || e.type === "stage")) anyHistory = true;
       const key = slots.length > 1 && slot.status === "closed" ? `${k}#closed-${i + 1}` : k;
       records.push(buildRecord(slot.row, slot.status, key, events, opts.stallDays, opts.now));
     });
