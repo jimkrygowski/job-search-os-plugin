@@ -60,7 +60,14 @@ export function derive(exp: Export, opts: { stallDays: number; now: Date }): Pay
   const warnings = [...exp.warnings];
 
   const eventsByKey = new Map<string, TrackerEvent[]>();
-  for (const e of [...exp.events].sort((a, b) => a.ts.localeCompare(b.ts))) {
+  // Order by day, then add → stage → source → close → remove within a day,
+  // then clock time. Back-dated and backfilled events carry nominal times
+  // (a close dated "2026-09-02" is 00:00), so clock time alone would put a
+  // same-day close before the add that started it.
+  const RANK: Record<TrackerEvent["type"], number> = { add: 0, stage: 1, source: 2, close: 3, remove: 4 };
+  const ordered = [...exp.events].sort((a, b) =>
+    a.ts.slice(0, 10).localeCompare(b.ts.slice(0, 10)) || RANK[a.type] - RANK[b.type] || a.ts.localeCompare(b.ts));
+  for (const e of ordered) {
     const k = keyOf(e.company, e.role);
     // `remove` means "this was never a real opportunity": forget its history.
     eventsByKey.set(k, e.type === "remove" ? [] : [...(eventsByKey.get(k) ?? []), e]);

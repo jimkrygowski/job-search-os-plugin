@@ -180,3 +180,17 @@ test("close and source events alone are not stage history", () => {
   assert.equal(p.noHistory, true);
   assert.equal(p.records[0]!.closedAt, "2026-09-02T00:00:00");
 });
+
+test("same-day events order as add → stage → close regardless of clock time", () => {
+  const p = derive(exp({
+    closed: [row("Acme", "VP", { stage: "Applied", outcome: "Passed", last_activity: "2026-09-02" })],
+    events: [
+      ev("Acme", "VP", "close", "2026-09-02T00:00:00", { from: "Applied", outcome: "Passed" }), // back-dated close
+      ev("Acme", "VP", "add", "2026-09-02T09:00:00", { to: "Identified", inferred: true }),
+      ev("Acme", "VP", "stage", "2026-09-02T08:00:00", { from: "Identified", to: "Applied", inferred: true }),
+    ],
+  }), opts);
+  assert.deepEqual(p.warnings, []);
+  assert.deepEqual(p.records[0]!.path.map((s) => s.stage), ["Identified", "Applied"]);
+  assert.equal(p.records[0]!.closedAt, "2026-09-02T00:00:00");
+});
