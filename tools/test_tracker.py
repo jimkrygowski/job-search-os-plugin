@@ -651,5 +651,107 @@ class LegacyStageEventTest(_CLIBase):
         self.assertEqual(self.events()[-1]["from"], "Recruiter Screen")
 
 
+class WorkspaceSourcesTest(_CLIBase):
+    CUSTOM = ["Referral", "LinkedIn Job Alert", "ZenSearch Job Alert", "Other"]
+
+    def configure(self, sources):
+        marker = Path(workspace.MARKER)
+        cfg = json.loads(marker.read_text())
+        cfg["sources"] = sources
+        marker.write_text(json.dumps(cfg))
+
+    def test_default_sources_without_config(self):
+        self.assertEqual(json.loads(self.ok("export", "--json").stdout)["sources"], tracker.SOURCES)
+
+    def test_workspace_sources_are_exported_and_enforced(self):
+        self.configure(self.CUSTOM)
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "linkedin job alert")
+        row = tracker.find_row(tracker.read_table(tracker.active_path()), "Acme", "VP")
+        self.assertEqual(row["Source"], "LinkedIn Job Alert")
+        r = self.run_cli("add", "Beta", "VP", "--stage", "Applied", "--source", "Job Alert")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ZenSearch Job Alert", r.stderr)
+        self.assertEqual(json.loads(self.ok("export", "--json").stdout)["sources"], self.CUSTOM)
+
+    def test_set_source_and_backfill_use_workspace_sources(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Other")
+        self.configure(self.CUSTOM)
+        self.ok("set-source", "Acme", "VP", "--source", "ZenSearch Job Alert")
+        Path("bf.json").write_text(json.dumps([{"company": "Acme", "role": "VP", "type": "source",
+                                                 "ts": "2026-07-01T00:00:00", "source": "Job Alert"}]))
+        self.assertEqual(self.run_cli("backfill", "--events-file", "bf.json").returncode, 1)
+
+    def test_rows_with_sources_outside_the_list_are_warned(self):
+        self.ok("add", "Acme", "VP", "--stage", "Applied", "--source", "Job Alert")
+        self.configure(self.CUSTOM)
+        warnings = json.loads(self.ok("export", "--json").stdout)["warnings"]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("Job Alert", warnings[0])
+
+    def test_invalid_sources_config_is_an_error(self):
+        for bad in ([], ["A", "a"], ["A", ""], "LinkedIn", [1, 2]):
+            self.configure(bad)
+            r = self.run_cli("export", "--json")
+            self.assertEqual(r.returncode, 1, bad)
+            self.assertIn("sources", r.stderr)
+
+
+class AmendClosedTest(_CLIBase):
+    def setUp(self):
+        super().setUp()
+        Path("tracker_closed.md").write_text(LegacyTableTest.V01_CLOSED)
+
+    def closed(self):
+        return tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
+
+    def test_sets_stage_and_outcome(self):
+        self.ok("amend-closed", "Old", "CTO", "--stage", "hiring manager", "--outcome", "Withdrew")
+        [row] = self.closed()
+        self.assertEqual((row["Stage"], row["Outcome"]), ("Hiring Manager", "Withdrew"))
+        self.assertEqual(row["Last Activity"], "2026-07-01")
+
+    def test_each_field_is_optional_but_one_is_required(self):
+        self.ok("amend-closed", "Old", "CTO", "--outcome", "Rejected")
+        self.assertEqual(self.closed()[0]["Stage"], "Screen")
+        self.assertNotEqual(self.run_cli("amend-closed", "Old", "CTO").returncode, 0)
+
+    def test_validates_values_and_row(self):
+        self.assertEqual(self.run_cli("amend-closed", "Old", "CTO", "--stage", "Vibes").returncode, 1)
+        self.assertEqual(self.run_cli("amend-closed", "Old", "CTO", "--outcome", "Meh").returncode, 1)
+        self.assertEqual(self.run_cli("amend-closed", "Nope", "X", "--outcome", "Rejected").returncode, 1)
+        self.assertEqual(self.closed()[0]["Outcome"], "")
+
+    def test_amends_most_recent_closed_row_for_reopened_opportunities(self):
+        self.ok("add", "Old", "CTO", "--stage", "Applied", "--source", "Other")
+        self.ok("close", "Old", "CTO", "--reason", "again", "--outcome", "Ghosted")
+        self.ok("amend-closed", "Old", "CTO", "--outcome", "Rejected")
+        self.assertEqual([r["Outcome"] for r in self.closed()], ["", "Rejected"])
+
+    def test_writes_no_event(self):
+        self.ok("amend-closed", "Old", "CTO", "--outcome", "Rejected")
+        self.assertEqual(self.events(), [])
+
+
+class RemoveTest(_CLIBase):
+    def test_removes_active_row_notes_reason_and_logs(self):
+        self.ok("add", "Rich", "Networking", "--stage", "Identified", "--source", "Other")
+        self.ok("remove", "Rich", "Networking", "--reason", "networking contact, moved to networking.md")
+        self.assertEqual(tracker.read_table(tracker.active_path()), [])
+        self.assertEqual(tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS), [])
+        notes = Path("opportunity/rich/networking/notes.md").read_text()
+        self.assertIn("Removed from tracker", notes)
+        self.assertIn("moved to networking.md", notes)
+        self.assertEqual(self.events()[-1]["type"], "remove")
+
+    def test_removed_opportunity_is_not_an_orphan_in_export(self):
+        self.ok("add", "Rich", "Networking", "--stage", "Identified", "--source", "Other")
+        self.ok("remove", "Rich", "Networking", "--reason", "r")
+        self.assertEqual(json.loads(self.ok("export", "--json").stdout)["warnings"], [])
+
+    def test_remove_requires_reason_and_existing_row(self):
+        self.assertNotEqual(self.run_cli("remove", "Nope", "X").returncode, 0)
+        self.assertEqual(self.run_cli("remove", "Nope", "X", "--reason", "r").returncode, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

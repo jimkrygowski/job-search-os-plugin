@@ -62,7 +62,8 @@ export function derive(exp: Export, opts: { stallDays: number; now: Date }): Pay
   const eventsByKey = new Map<string, TrackerEvent[]>();
   for (const e of [...exp.events].sort((a, b) => a.ts.localeCompare(b.ts))) {
     const k = keyOf(e.company, e.role);
-    eventsByKey.set(k, [...(eventsByKey.get(k) ?? []), e]);
+    // `remove` means "this was never a real opportunity": forget its history.
+    eventsByKey.set(k, e.type === "remove" ? [] : [...(eventsByKey.get(k) ?? []), e]);
   }
 
   // Records list active opportunities first. Within one opportunity the
@@ -103,6 +104,7 @@ export function derive(exp: Export, opts: { stallDays: number; now: Date }): Pay
   }
 
   for (const events of eventsByKey.values()) {
+    if (!events.length) continue;
     const e = events[0]!;
     warnings.push(`${e.company} / ${e.role}: ${events.length} event(s) match no tracker row and were ignored`);
   }

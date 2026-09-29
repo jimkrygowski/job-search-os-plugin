@@ -17,7 +17,7 @@ export type TrackerEvent = {
   ts: string;
   company: string;
   role: string;
-  type: "add" | "stage" | "close" | "source";
+  type: "add" | "stage" | "close" | "source" | "remove";
   from?: string;
   to?: string;
   outcome?: string;

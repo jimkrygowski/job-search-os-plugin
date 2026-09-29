@@ -63,6 +63,8 @@ Plus one command, `/job-search-os:summarize-call`, which turns a call transcript
 
 Filter by date added, source and status; click any node, link or row to see the opportunities behind it, then any one of them for its timeline and `notes.md`. Every chart has a table view.
 
+Sources default to Referral, Recruiter Inbound, Applied Cold, Warm Intro, Job Alert and Other; to split them further (say, job alerts by feed), set your own list in the workspace's `.job-search-os.json`, e.g. `"sources": ["Referral", "Recruiter Inbound", "Applied Cold", "Warm Intro", "LinkedIn Job Alert", "ZenSearch Job Alert", "Other"]`. Each source keeps one color everywhere (up to eight).
+
 It's powered by `tracker_events.jsonl`, which the tracker appends to on every stage change. For opportunities from before that log existed, run `/job-search-os:backfill-history` once: it reconstructs past history from your notes (asking you when the evidence is ambiguous, never inventing dates), and the Sankey draws reconstructed history striped so it's never confused with recorded history.
 
 The server runs TypeScript directly on Node 22.18+ with no npm install and no runtime dependencies; charts use vendored [d3](https://d3js.org) and d3-sankey, so nothing is fetched from the internet. It stops itself after two idle hours.

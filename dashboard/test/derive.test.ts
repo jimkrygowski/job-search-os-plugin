@@ -143,3 +143,28 @@ test("fixture: one record per row, Northwind split, orphan warned", () => {
   const cobalt = p.records.find((r) => r.company === "Cobalt Labs")!;
   assert.ok(cobalt.path.every((s) => s.inferred));
 });
+
+test("events of a removed opportunity are dropped silently", () => {
+  const p = derive(exp({
+    active: [row("Acme", "VP")],
+    events: [
+      ev("Rich", "Networking", "add", "2026-08-01T10:00:00", { to: "Identified" }),
+      ev("Rich", "Networking", "remove", "2026-09-29T10:00:00"),
+    ],
+  }), opts);
+  assert.equal(p.records.length, 1);
+  assert.deepEqual(p.warnings, []);
+});
+
+test("a removed-then-re-added opportunity keeps only its new lifetime", () => {
+  const p = derive(exp({
+    active: [row("Rich", "Networking", { stage: "Applied" })],
+    events: [
+      ev("Rich", "Networking", "add", "2026-08-01T10:00:00", { to: "Identified" }),
+      ev("Rich", "Networking", "remove", "2026-08-05T10:00:00"),
+      ev("Rich", "Networking", "add", "2026-09-01T10:00:00", { to: "Applied" }),
+    ],
+  }), opts);
+  assert.deepEqual(p.records[0]!.path.map((s) => s.ts), ["2026-09-01T10:00:00"]);
+  assert.deepEqual(p.warnings, []);
+});

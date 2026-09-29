@@ -122,6 +122,26 @@ def require_choice(value: str, allowed: list[str], what: str) -> str:
     return match
 
 
+def workspace_sources() -> list[str]:
+    """The workspace's own source list (`"sources"` in .job-search-os.json),
+    or SOURCES. Lets a workspace split e.g. "Job Alert" by feed without the
+    plugin hard-coding anyone's job boards."""
+    try:
+        cfg = json.loads((state_root() / workspace.MARKER).read_text())
+    except (OSError, json.JSONDecodeError):
+        return SOURCES
+    if not isinstance(cfg, dict) or "sources" not in cfg:
+        return SOURCES
+    value = cfg["sources"]
+    ok = (isinstance(value, list) and value
+          and all(isinstance(v, str) and v.strip() for v in value)
+          and len({v.strip().lower() for v in value}) == len(value))
+    if not ok:
+        _fail(f'"sources" in {workspace.MARKER} must be a non-empty list of distinct names, '
+              f"got {value!r}")
+    return [v.strip() for v in value]
+
+
 def now_ts() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
 
@@ -290,7 +310,7 @@ def require_row(rows, company, role):
 
 def cmd_add(args):
     stage = require_stage(args.stage)
-    source = require_choice(args.source, SOURCES, "source")
+    source = require_choice(args.source, workspace_sources(), "source")
     with locked():
         rows = read_table(active_path())
         if find_row(rows, args.company, args.role):
@@ -371,7 +391,7 @@ def cmd_close(args):
 
 
 def cmd_set_source(args):
-    source = require_choice(args.source, SOURCES, "source")
+    source = require_choice(args.source, workspace_sources(), "source")
     with locked():
         for path, title, columns in ((active_path(), ACTIVE_TITLE, ACTIVE_COLUMNS),
                                      (closed_path(), CLOSED_TITLE, CLOSED_COLUMNS)):
@@ -388,7 +408,49 @@ def cmd_set_source(args):
     print(f"set source for {args.company} / {args.role}: {source}")
 
 
-def _export_row(row: dict, warnings: list[str], closed: bool) -> dict:
+def cmd_amend_closed(args):
+    """Corrects Stage/Outcome on an already-closed row (the most recent one,
+    if an opportunity was closed more than once). A correction of the record,
+    not a pipeline move, so it writes no event."""
+    if args.stage is None and args.outcome is None:
+        _fail("amend-closed needs --stage and/or --outcome")
+    stage = require_stage(args.stage) if args.stage is not None else None
+    outcome = require_choice(args.outcome, OUTCOMES, "outcome") if args.outcome is not None else None
+    with locked():
+        rows = read_table(closed_path(), CLOSED_COLUMNS)
+        target = (slugify(args.company), slugify(args.role))
+        matches = [r for r in rows if (slugify(r["Company"]), slugify(r["Role"])) == target]
+        if not matches:
+            _fail(f"{args.company} / {args.role} not found in tracker_closed.md")
+        row = matches[-1]
+        if stage is not None:
+            row["Stage"] = stage
+        if outcome is not None:
+            row["Outcome"] = outcome
+        write_table(closed_path(), rows, CLOSED_TITLE, CLOSED_COLUMNS)
+    print(f"amended {args.company} / {args.role}: stage={row['Stage']} outcome={row['Outcome']}")
+
+
+def cmd_remove(args):
+    """Takes a row that isn't a real opportunity (e.g. a networking contact)
+    out of the tracker entirely. Its folder is kept; the reason goes in notes."""
+    with locked():
+        rows = read_table(active_path())
+        row = require_row(rows, args.company, args.role)
+        rows.remove(row)
+        write_table(active_path(), rows, ACTIVE_TITLE)
+        append_event({"company": row["Company"], "role": row["Role"], "type": "remove"})
+    notes_dir = opportunity_path(args.company, args.role)
+    notes_dir.mkdir(parents=True, exist_ok=True)
+    with (notes_dir / "notes.md").open("a") as f:
+        f.write(f"\n- **Removed from tracker ({today()}):** {args.reason}\n")
+    print(f"removed {args.company} / {args.role}")
+
+
+def _export_row(row: dict, warnings: list[str], closed: bool, sources: list[str]) -> dict:
+    if row["Source"] and row["Source"] not in sources:
+        warnings.append(f"{row['Company']} / {row['Role']}: source {row['Source']!r} is not in "
+                        f"your sources list ({', '.join(sources)})")
     stage = canonical_stage(row["Stage"])
     if stage is None:
         stage = row["Stage"]
@@ -418,13 +480,14 @@ def export_data() -> dict:
         closed = read_table(closed_path(), CLOSED_COLUMNS)
         events, event_warnings = read_events()
     warnings: list[str] = []
+    sources = workspace_sources()
     data = {
         "schema": 1,
         "stages": STAGES,
         "outcomes": OUTCOMES,
-        "sources": SOURCES,
-        "active": [_export_row(r, warnings, closed=False) for r in active],
-        "closed": [_export_row(r, warnings, closed=True) for r in closed],
+        "sources": sources,
+        "active": [_export_row(r, warnings, closed=False, sources=sources) for r in active],
+        "closed": [_export_row(r, warnings, closed=True, sources=sources) for r in closed],
         "events": events,
     }
     data["warnings"] = event_warnings + warnings
@@ -436,7 +499,7 @@ def cmd_export(args):
     print()
 
 
-def _validate_backfill_entry(entry, known) -> str | None:
+def _validate_backfill_entry(entry, known, sources) -> str | None:
     """Returns an error message, or None. Normalizes names in place."""
     if not isinstance(entry, dict):
         return f"not an object: {entry!r}"
@@ -462,7 +525,7 @@ def _validate_backfill_entry(entry, known) -> str | None:
             return f"{label}: unknown outcome {entry.get('outcome')!r}"
         entry["outcome"] = outcome
     if kind == "source" or (kind == "add" and "source" in entry):
-        source = _match(str(entry.get("source", "")), SOURCES)
+        source = _match(str(entry.get("source", "")), sources)
         if source is None:
             return f"{label}: unknown source {entry.get('source')!r}"
         entry["source"] = source
@@ -485,7 +548,8 @@ def cmd_backfill(args):
         active = read_table(active_path())
         closed = read_table(closed_path(), CLOSED_COLUMNS)
         known = {(slugify(r["Company"]), slugify(r["Role"])) for r in active + closed}
-        errors = [err for err in (_validate_backfill_entry(e, known) for e in entries) if err]
+        sources = workspace_sources()
+        errors = [err for err in (_validate_backfill_entry(e, known, sources) for e in entries) if err]
         if errors:
             _fail("backfill rejected, nothing written:\n  " + "\n  ".join(errors))
 
@@ -546,7 +610,7 @@ def build_parser():
     p_add.add_argument("company")
     p_add.add_argument("role")
     p_add.add_argument("--stage", required=True)
-    p_add.add_argument("--source", required=True, help=" | ".join(SOURCES))
+    p_add.add_argument("--source", required=True, help="one of the workspace sources (see export --json)")
     p_add.add_argument("--next-action", default="")
     p_add.add_argument("--next-action-date", default="")
     p_add.add_argument("--last-activity")
@@ -578,12 +642,25 @@ def build_parser():
     p_source = sub.add_parser("set-source")
     p_source.add_argument("company")
     p_source.add_argument("role")
-    p_source.add_argument("--source", required=True, help=" | ".join(SOURCES))
+    p_source.add_argument("--source", required=True, help="one of the workspace sources (see export --json)")
     p_source.set_defaults(func=cmd_set_source)
 
     p_list = sub.add_parser("list")
     p_list.add_argument("--closed", action="store_true")
     p_list.set_defaults(func=cmd_list)
+
+    p_amend = sub.add_parser("amend-closed")
+    p_amend.add_argument("company")
+    p_amend.add_argument("role")
+    p_amend.add_argument("--stage")
+    p_amend.add_argument("--outcome", help=" | ".join(OUTCOMES))
+    p_amend.set_defaults(func=cmd_amend_closed)
+
+    p_remove = sub.add_parser("remove")
+    p_remove.add_argument("company")
+    p_remove.add_argument("role")
+    p_remove.add_argument("--reason", required=True)
+    p_remove.set_defaults(func=cmd_remove)
 
     p_export = sub.add_parser("export")
     p_export.add_argument("--json", action="store_true", required=True)

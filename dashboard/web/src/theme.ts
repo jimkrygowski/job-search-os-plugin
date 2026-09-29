@@ -3,11 +3,15 @@
 // entity keeps its color in every view and under every filter.
 import { UNKNOWN_SOURCE } from "../../shared/aggregate.ts";
 
+/** The validated categorical palette has 8 slots; past that, and for any
+ * source not in the list, a neutral gray (labels carry identity). */
+const SLOTS = 8;
+
 /** Sources take categorical slots in the order tracker.py lists them —
  * never by rank, so filtering never repaints a source. */
 export function sourceClass(source: string, sources: string[]): string {
   const i = sources.indexOf(source);
-  return source === UNKNOWN_SOURCE || i === -1 ? "c-unknown" : `c-src-${i + 1}`;
+  return source === UNKNOWN_SOURCE || i === -1 || i >= SLOTS ? "c-unknown" : `c-src-${i + 1}`;
 }
 
 const OUTCOME_CLASS: Record<string, string> = {

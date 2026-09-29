@@ -102,6 +102,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* Color roles as classes (see theme.ts). --c is the entity's color. */
 .c-src-1 { --c: var(--series-1); } .c-src-2 { --c: var(--series-2); } .c-src-3 { --c: var(--series-3); }
 .c-src-4 { --c: var(--series-4); } .c-src-5 { --c: var(--series-5); } .c-src-6 { --c: var(--series-6); }
+.c-src-7 { --c: var(--series-7); } .c-src-8 { --c: var(--series-8); }
 .c-series-1 { --c: var(--series-1); } .c-series-2 { --c: var(--series-2); } .c-series-3 { --c: var(--series-3); }
 .c-unknown { --c: var(--unknown); } .c-stage { --c: var(--stage); } .c-flow { --c: var(--flow); }
 .c-active { --c: var(--active); } .c-stalled { --c: var(--stalled); }

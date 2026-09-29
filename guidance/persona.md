@@ -100,6 +100,12 @@ the workspace in its own private git repo.
   opportunity is over, close it with its outcome (Accepted, Rejected,
   Withdrew, Ghosted, or Declined Offer):
   `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" close "<Company>" "<Role>" --outcome "<outcome>" --reason "<why>"`
+  To correct a closed row's stage or outcome, use `amend-closed`; to take a
+  row that was never a real opportunity (e.g. a networking contact) out of
+  the tracker, use `remove --reason "<why>"` — only when the user asks.
+  Sources come from the workspace: `"sources"` in `.job-search-os.json` if
+  set (e.g. to split job alerts by feed), otherwise Referral, Recruiter
+  Inbound, Applied Cold, Warm Intro, Job Alert, Other.
 - `tracker_events.jsonl` — every stage change, written by the tracker;
   it powers the dashboard. Never edit it by hand; `backfill-history`
   adds past history.
