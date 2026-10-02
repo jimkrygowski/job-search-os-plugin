@@ -24,8 +24,9 @@ CLOSED_COLUMNS = ACTIVE_COLUMNS + ["Outcome"]
 # The canonical pipeline, in order. The dashboard reads these via
 # `export --json` rather than hard-coding them.
 STAGES = ["Identified", "Applied", "Recruiter Screen", "Hiring Manager", "Interview Loop", "Offer"]
-# Passed = declined before any conversation; Withdrew = pulled out mid-process.
-OUTCOMES = ["Accepted", "Rejected", "Withdrew", "Ghosted", "Declined Offer", "Passed", "Role Filled"]
+# Passed = declined before any conversation; Withdrew = pulled out mid-process;
+# No Role = a real conversation, but there is no opening (yet).
+OUTCOMES = ["Accepted", "Rejected", "Withdrew", "Ghosted", "Declined Offer", "Passed", "Role Filled", "No Role"]
 SOURCES = ["Referral", "Recruiter Inbound", "Applied Cold", "Warm Intro", "Job Alert", "Other"]
 
 # Stage names used before the ladder was fixed (lowercased). Anything not

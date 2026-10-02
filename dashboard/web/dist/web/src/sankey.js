@@ -17,7 +17,7 @@ function nodeKeys(n, links) {
     }
     return [...keys];
 }
-const END_ORDER = ["Accepted", "Declined Offer", "Withdrew", "Passed", "Rejected", "Role Filled", "Ghosted", "Closed"];
+const END_ORDER = ["Accepted", "Declined Offer", "Withdrew", "Passed", "Rejected", "Role Filled", "No Role", "Ghosted", "Closed"];
 /** Vertical order within a column: sources in the tracker's fixed order,
  * the ladder in order, outcomes first, then open ones by stage. */
 function rank(n, stages, sources) {

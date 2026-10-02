@@ -111,7 +111,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .c-active { --c: var(--active); } .c-stalled { --c: var(--stalled); }
 .c-accepted { --c: var(--good); } .c-declined { --c: var(--series-7); } .c-rejected { --c: var(--critical); }
 .c-withdrew { --c: var(--withdrew); } .c-ghosted { --c: var(--ghosted); }
-.c-passed { --c: var(--series-4); } .c-filled { --c: var(--series-3); }
+.c-passed { --c: var(--series-4); } .c-filled { --c: var(--series-3); } .c-norole { --c: var(--series-5); }
 
 /* Sankey */
 svg { display: block; font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; }
