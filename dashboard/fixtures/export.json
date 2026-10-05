@@ -15,7 +15,8 @@
     "Ghosted",
     "Declined Offer",
     "Passed",
-    "Role Filled"
+    "Role Filled",
+    "No Role"
   ],
   "sources": [
     "Referral",

@@ -99,7 +99,8 @@ the workspace in its own private git repo.
   Screen, Hiring Manager, Interview Loop, Offer. When the user decides an
   opportunity is over, close it with its outcome (Accepted, Rejected,
   Withdrew, Ghosted, Declined Offer, Passed — declined before any
-  conversation — or Role Filled):
+  conversation — Role Filled, or No Role — a real conversation, but no
+  opening exists):
   `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" close "<Company>" "<Role>" --outcome "<outcome>" --reason "<why>"`
   To correct a closed row's stage or outcome, use `amend-closed`; to take a
   row that was never a real opportunity (e.g. a networking contact) out of

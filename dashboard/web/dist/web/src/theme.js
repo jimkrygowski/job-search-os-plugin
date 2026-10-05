@@ -19,6 +19,7 @@ const OUTCOME_CLASS = {
     Ghosted: "c-ghosted",
     Passed: "c-passed",
     "Role Filled": "c-filled",
+    "No Role": "c-norole",
     Closed: "c-ghosted",
 };
 export function endClass(label) {

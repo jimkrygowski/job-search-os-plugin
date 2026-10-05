@@ -774,12 +774,12 @@ class RepeatApplicationTest(_CLIBase):
 
 
 class CleanupSupportTest(_CLIBase):
-    def test_passed_and_role_filled_are_outcomes(self):
-        for outcome in ("Passed", "Role Filled"):
+    def test_passed_role_filled_and_no_role_are_outcomes(self):
+        for outcome in ("Passed", "Role Filled", "No Role"):
             self.ok("add", outcome, "VP", "--stage", "Identified", "--source", "Other")
             self.ok("close", outcome, "VP", "--reason", "r", "--outcome", outcome.lower())
         rows = tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS)
-        self.assertEqual([r["Outcome"] for r in rows], ["Passed", "Role Filled"])
+        self.assertEqual([r["Outcome"] for r in rows], ["Passed", "Role Filled", "No Role"])
 
     def test_correction_fixes_stage_without_event_or_activity_change(self):
         Path("tracker.md").write_text(LegacyTableTest.V01_ACTIVE.replace(
