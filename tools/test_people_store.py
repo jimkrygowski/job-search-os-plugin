@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import people_store as store  # noqa: E402
 from people_store import Person, PeopleError, Role  # noqa: E402
-from people_testkit import WorkspaceTestCase  # noqa: E402
+from people_testkit import BF, NW, WorkspaceTestCase  # noqa: E402
 
 CANONICAL = """---
 name: Dana Reyes
@@ -205,6 +205,57 @@ class StoreOnDiskTest(WorkspaceTestCase):
         merges = {"old": "lee_park"}
         self.assertEqual(len(store.touches_of("lee_park", events, merges)), 2)
         self.assertEqual(store.last_touches(events, merges)["lee_park"]["channel"], "call")
+
+
+class ContactsTest(WorkspaceTestCase):
+    def setUp(self):
+        super().setUp()
+        self.known = {NW: {"company": "Northwind Motors", "role": "VP of Engineering", "active": True}}
+        self.people = {p.slug: p for p in [
+            Person(slug="zoe_ng", name="Zoe Ng", roles=[Role("panelist", NW)]),
+            Person(slug="ann_bo", name="Ann | Bo", roles=[Role("panelist", NW), Role("connector", NW)]),
+            Person(slug="dana_reyes", name="Dana Reyes", roles=[Role("recruiter", NW), Role("peer")]),
+            Person(slug="lee_park", name="Lee Park", roles=[Role("hiring", BF)]),
+        ]}
+
+    def test_render(self):
+        self.assertEqual(store.render_contacts(NW, self.known, self.people), (
+            "# Contacts — Northwind Motors / VP of Engineering\n\n"
+            f"{store.GENERATED}\n\n"
+            "| Name | Role | Page |\n| --- | --- | --- |\n"
+            "| Dana Reyes | recruiter | [[people/dana_reyes]] |\n"
+            "| Ann \\| Bo | connector | [[people/ann_bo]] |\n"
+            "| Ann \\| Bo | panelist | [[people/ann_bo]] |\n"
+            "| Zoe Ng | panelist | [[people/zoe_ng]] |\n"))
+
+    def test_render_without_people_or_tracker_row(self):
+        text = store.render_contacts("gone_co/cto", {}, {})
+        self.assertTrue(text.startswith("# Contacts — gone_co/cto\n"))
+        self.assertTrue(text.endswith("| Name | Role | Page |\n| --- | --- | --- |\n"))
+
+    def test_linked_opportunities_ignore_bare_roles(self):
+        self.assertEqual(store.linked_opportunities(self.people), {NW, BF})
+
+    def test_first_write_keeps_hand_written_file(self):
+        folder = self.root / "opportunity" / NW
+        folder.mkdir(parents=True)
+        (folder / "contacts.md").write_text("# Contacts\n\n## Dana Reyes\nRecruiter.\n")
+        self.assertTrue(store.write_contacts(NW, self.known, self.people))
+        self.assertEqual((folder / store.HAND_WRITTEN).read_text(), "# Contacts\n\n## Dana Reyes\nRecruiter.\n")
+        self.assertIn(store.GENERATED, (folder / "contacts.md").read_text())
+        # A later regeneration doesn't back up the generated file.
+        self.people["zoe_ng"].name = "Zoe Ng-Lam"
+        self.assertTrue(store.write_contacts(NW, self.known, self.people))
+        self.assertEqual((folder / store.HAND_WRITTEN).read_text(), "# Contacts\n\n## Dana Reyes\nRecruiter.\n")
+
+    def test_unchanged_content_is_not_rewritten(self):
+        store.write_contacts(NW, self.known, self.people)
+        self.assertFalse(store.write_contacts(NW, self.known, self.people))
+
+    def test_sync_creates_missing_folders_and_reports_changes(self):
+        changed = store.sync_contacts({NW, BF}, self.known, self.people)
+        self.assertEqual(changed, sorted([BF, NW]))
+        self.assertTrue((self.root / "opportunity" / BF / "contacts.md").exists())
 
 
 if __name__ == "__main__":
