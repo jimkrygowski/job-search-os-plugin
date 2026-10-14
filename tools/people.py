@@ -211,6 +211,63 @@ def cmd_sync_contacts(args):
     print("regenerated: " + (", ".join(changed) or "nothing changed"))
 
 
+def cmd_touch(args):
+    with store.locked():
+        st = load_state()
+        p = store.resolve(args.person, st.people, st.merges)
+        ts = store.event_ts(args.date)
+        day = ts[:10]
+        for t in store.touches_of(p.slug, st.events, st.merges):
+            if t["ts"][:10] == day and t["channel"] == args.channel and (t.get("note") or "") == args.note:
+                print(f"already logged: {p.name}, {args.channel}, {day}")
+                return
+        store.apply_touch(p, datetime.date.fromisoformat(day))
+        store.save_person(p)
+        store.append_event({"ts": ts, "type": "touch", "person": p.slug,
+                            "channel": args.channel, "note": args.note})
+    print(f"touched {p.name} ({args.channel}, {day}); next touch {p.next_touch or 'none'}")
+
+
+def parse_within(text: str) -> int:
+    m = re.fullmatch(r"(\d+)d?", text.strip())
+    if not m:
+        raise PeopleError(f"--within must look like 3d, got {text!r}")
+    return int(m.group(1))
+
+
+def cmd_due(args):
+    within = parse_within(args.within)
+    today = datetime.date.today()
+    with store.locked():
+        st = load_state()
+        intros = store.intro_states(st.events, st.merges)
+        stall = store.stall_days()
+    due = store.due_people(st.people, today, within)
+    last = store.last_touches(st.events, st.merges)
+    open_intros = sorted((i for i in intros.values() if i["status"] != "closed"), key=lambda i: i["updated"])
+    stalled = [i for i in open_intros
+               if (today - datetime.date.fromisoformat(i["updated"][:10])).days >= stall]
+    waiting = [i for i in open_intros if i not in stalled]
+    if not (due or open_intros):
+        print("Nothing due.")
+        return
+    if due:
+        print("Due relationships:")
+        for p in due:
+            delta = (datetime.date.fromisoformat(p.next_touch) - today).days
+            when = f"{-delta}d overdue" if delta < 0 else ("due today" if delta == 0 else f"due in {delta}d")
+            t = last.get(p.slug)
+            tail = f" — last touch {t['ts'][:10]} ({t['channel']})" if t else " — no touches logged"
+            print(f"  {p.next_touch}  {when}  {store.describe(p)}{tail}")
+    if stalled:
+        print(f"Stalled intros (no movement in {stall}+ days):")
+        for i in stalled:
+            print("  " + format_intro(i, st.people, today))
+    if waiting:
+        print("Open intros:")
+        for i in waiting:
+            print("  " + format_intro(i, st.people, today))
+
 def build_parser():
     parser = argparse.ArgumentParser(description="People, follow-ups and intros")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -256,6 +313,17 @@ def build_parser():
     p_sync = sub.add_parser("sync-contacts")
     p_sync.add_argument("--opportunity")
     p_sync.set_defaults(func=cmd_sync_contacts)
+
+    p_touch = sub.add_parser("touch")
+    p_touch.add_argument("person")
+    p_touch.add_argument("--channel", required=True, choices=store.CHANNELS)
+    p_touch.add_argument("--date")
+    p_touch.add_argument("--note", default="")
+    p_touch.set_defaults(func=cmd_touch)
+
+    p_due = sub.add_parser("due")
+    p_due.add_argument("--within", default="0d")
+    p_due.set_defaults(func=cmd_due)
 
     return parser
 

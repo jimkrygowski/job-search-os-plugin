@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import people_store as store  # noqa: E402
 from people_store import Person, PeopleError, Role  # noqa: E402
 from people_testkit import BF, NW, WorkspaceTestCase  # noqa: E402
+import datetime  # noqa: E402
 
 CANONICAL = """---
 name: Dana Reyes
@@ -256,6 +257,67 @@ class ContactsTest(WorkspaceTestCase):
         changed = store.sync_contacts({NW, BF}, self.known, self.people)
         self.assertEqual(changed, sorted([BF, NW]))
         self.assertTrue((self.root / "opportunity" / BF / "contacts.md").exists())
+
+
+class FollowUpRuleTest(unittest.TestCase):
+    D = datetime.date(2026, 10, 1)
+
+    def _person(self, **fields):
+        return Person(slug="a", name="A", relationship="yes", cadence="21d", **fields)
+
+    def test_touch_sets_next_touch_from_cadence(self):
+        p = self._person()
+        store.apply_touch(p, self.D)
+        self.assertEqual(p.next_touch, "2026-10-22")
+
+    def test_later_explicit_date_survives(self):
+        p = self._person(next_touch="2026-12-01")
+        store.apply_touch(p, self.D)
+        self.assertEqual(p.next_touch, "2026-12-01")
+
+    def test_earlier_date_is_replaced(self):
+        p = self._person(next_touch="2026-10-05")
+        store.apply_touch(p, self.D)
+        self.assertEqual(p.next_touch, "2026-10-22")
+
+    def test_backdated_touch_never_pulls_next_touch_earlier(self):
+        p = self._person()
+        store.apply_touch(p, self.D)
+        store.apply_touch(p, datetime.date(2026, 9, 1))
+        self.assertEqual(p.next_touch, "2026-10-22")
+
+    def test_cadence_none_clears_a_date_that_has_been_met(self):
+        p = self._person(next_touch="2026-09-30")
+        p.cadence = "none"
+        store.apply_touch(p, self.D)
+        self.assertEqual(p.next_touch, "")
+        p.next_touch = "2026-11-01"
+        store.apply_touch(p, self.D)
+        self.assertEqual(p.next_touch, "2026-11-01")
+
+    def test_not_a_relationship_is_untouched(self):
+        p = Person(slug="a", name="A", cadence="21d", next_touch="2026-09-01")
+        store.apply_touch(p, self.D)
+        self.assertEqual(p.next_touch, "2026-09-01")
+
+    def test_event_ts(self):
+        today = datetime.date(2026, 10, 14)
+        self.assertEqual(store.event_ts("2026-10-01", today), "2026-10-01T09:00:00")
+        with self.assertRaises(PeopleError):
+            store.event_ts("2026-10-15", today)
+
+    def test_due_people_window_and_order(self):
+        today = datetime.date(2026, 10, 14)
+        people = {p.slug: p for p in [
+            Person(slug="late", name="Late", relationship="yes", next_touch="2026-10-01"),
+            Person(slug="today", name="Today", relationship="yes", next_touch="2026-10-14"),
+            Person(slug="edge", name="Edge", relationship="yes", next_touch="2026-10-17"),
+            Person(slug="out", name="Out", relationship="yes", next_touch="2026-10-18"),
+            Person(slug="no", name="No", relationship="no", next_touch="2026-10-01"),
+            Person(slug="never", name="Never", relationship="yes"),
+        ]}
+        self.assertEqual([p.slug for p in store.due_people(people, today, 3)], ["late", "today", "edge"])
+        self.assertEqual([p.slug for p in store.due_people(people, today, 0)], ["late", "today"])
 
 
 if __name__ == "__main__":

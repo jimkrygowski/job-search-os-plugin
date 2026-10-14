@@ -397,3 +397,36 @@ def write_contacts(opp: str, known: dict[str, dict], people: dict[str, Person]) 
 
 def sync_contacts(opps, known: dict[str, dict], people: dict[str, Person]) -> list[str]:
     return [opp for opp in sorted(opps) if write_contacts(opp, known, people)]
+
+
+# --- follow-ups ------------------------------------------------------------------
+
+def event_ts(day: str | None, today: datetime.date | None = None) -> str:
+    """Timestamp for an event on `day` (default today): the current time for
+    today, 09:00 for an earlier day. A future day is an error."""
+    today = today or datetime.date.today()
+    when = parse_date(day, "--date") if day else today
+    if when > today:
+        raise PeopleError(f"--date {when} is in the future")
+    return tracker.now_ts() if when == today else f"{when.isoformat()}T09:00:00"
+
+
+def apply_touch(p: Person, day: datetime.date) -> None:
+    """The follow-up rule: next_touch = max(day + cadence, current next_touch).
+    With cadence none, a next_touch on or before the touch is cleared."""
+    if p.relationship != "yes":
+        return
+    current = parse_date(p.next_touch, "next_touch") if p.next_touch else None
+    if p.cadence == "none":
+        if current is not None and current <= day:
+            p.next_touch = ""
+        return
+    proposed = day + datetime.timedelta(days=int(p.cadence[:-1]))
+    if current is None or proposed > current:
+        p.next_touch = proposed.isoformat()
+
+
+def due_people(people: dict[str, Person], today: datetime.date, within_days: int) -> list[Person]:
+    horizon = (today + datetime.timedelta(days=within_days)).isoformat()
+    hits = [p for p in people.values() if p.relationship == "yes" and p.next_touch and p.next_touch <= horizon]
+    return sorted(hits, key=lambda p: (p.next_touch, p.slug))

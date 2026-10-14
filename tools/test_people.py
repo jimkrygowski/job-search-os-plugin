@@ -5,6 +5,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import people_store as store  # noqa: E402
 from people_testkit import BF, NW, WorkspaceTestCase  # noqa: E402
+import concurrent.futures  # noqa: E402
+import datetime  # noqa: E402
+import subprocess  # noqa: E402
 
 
 class AddTest(WorkspaceTestCase):
@@ -128,6 +131,79 @@ class ReadCommandsTest(WorkspaceTestCase):
     def test_malformed_page_fails_every_command_naming_the_line(self):
         (self.root / "people" / "dana_reyes.md").write_text("---\nname: Dana\nbogus\n---\n")
         self.assertIn("people/dana_reyes.md:3", self.people_error("show", "lee_park"))
+
+
+TODAY = datetime.date.today()
+
+
+def days_ago(n):
+    return (TODAY - datetime.timedelta(days=n)).isoformat()
+
+
+class TouchTest(WorkspaceTestCase):
+    def setUp(self):
+        super().setUp()
+        self.people("add", "Dana Reyes", "--email", "dana.reyes@example.com", "--relationship", "yes",
+                    "--cadence", "21d")
+
+    def test_touch_logs_event_and_rolls_next_touch(self):
+        self.people("touch", "dana.reyes@example.com", "--channel", "email", "--date", days_ago(5),
+                    "--note", "Re: coffee")
+        event = self.events()[-1]
+        self.assertEqual((event["type"], event["person"], event["channel"], event["note"]),
+                         ("touch", "dana_reyes", "email", "Re: coffee"))
+        self.assertEqual(event["ts"], f"{days_ago(5)}T09:00:00")
+        expected = (TODAY + datetime.timedelta(days=16)).isoformat()
+        self.assertIn(f"next_touch: {expected}", self.page("dana_reyes"))
+
+    def test_touch_today_uses_the_current_time(self):
+        self.people("touch", "dana_reyes", "--channel", "call")
+        self.assertTrue(self.events()[-1]["ts"].startswith(TODAY.isoformat() + "T"))
+        self.assertNotEqual(self.events()[-1]["ts"], f"{TODAY.isoformat()}T09:00:00")
+
+    def test_same_touch_twice_is_logged_once(self):
+        for _ in range(2):
+            self.people("touch", "dana_reyes", "--channel", "email", "--date", days_ago(1), "--note", "Re: x")
+        self.assertEqual(sum(e["type"] == "touch" for e in self.events()), 1)
+
+    def test_future_date_is_rejected(self):
+        tomorrow = (TODAY + datetime.timedelta(days=1)).isoformat()
+        self.assertIn("future", self.people_error("touch", "dana_reyes", "--channel", "call", "--date", tomorrow))
+
+    def test_concurrent_touches_do_not_clobber(self):
+        names = [f"Person {i}" for i in range(8)]
+        for name in names:
+            self.people("add", name, "--relationship", "yes", "--cadence", "30d")
+
+        def touch(name):
+            return subprocess.run([sys.executable, str(Path(__file__).parent / "people.py"), "touch", name,
+                                   "--channel", "email"], capture_output=True, text=True)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(names)) as pool:
+            results = list(pool.map(touch, names))
+        for r in results:
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sum(e["type"] == "touch" for e in self.events()), len(names))
+        expected = (TODAY + datetime.timedelta(days=30)).isoformat()
+        for name in names:
+            self.assertIn(f"next_touch: {expected}", self.page(name.lower().replace(" ", "_")))
+
+
+class DueTest(WorkspaceTestCase):
+    def test_nothing_due(self):
+        self.assertEqual(self.people("due").strip(), "Nothing due.")
+
+    def test_overdue_first_with_last_touch(self):
+        self.people("add", "Soon Person", "--relationship", "yes", "--next-touch",
+                    (TODAY + datetime.timedelta(days=2)).isoformat())
+        self.people("add", "Late Person", "--relationship", "yes", "--cadence", "21d")
+        self.people("touch", "late_person", "--channel", "email", "--date", days_ago(30))
+        out = self.people("due", "--within", "3d")
+        self.assertLess(out.index("Late Person"), out.index("Soon Person"))
+        self.assertIn("9d overdue", out)
+        self.assertIn(f"last touch {days_ago(30)} (email)", out)
+        self.assertIn("due in 2d", out)
+        self.assertNotIn("Soon Person", self.people("due"))
 
 
 if __name__ == "__main__":
