@@ -466,3 +466,166 @@ def write_draft(today: datetime.date | None = None) -> str:
     unknown = sum(1 for r in rows if any(item.startswith("?") for item in r.roles))
     return (f"wrote {DRAFT_NAME}: {len(rows)} people from {len({c.file for c in cands})} files; "
             f"{unknown} need a role (?), {overdue} overdue, {len(unparsed)} unparsed lines")
+
+
+def _row_person(num, cells, known, by_source, errors):
+    where = f"row {num} ({cells['Name'] or 'no name'})"
+    p = Person(slug="", name=cells["Name"], org=cells["Org"], title=cells["Title"], email=cells["Email"],
+               relationship=cells["Relationship"] or "no", cadence=cells["Cadence"] or "none",
+               next_touch=cells["Next touch"])
+    for item in store.split_list(cells["Roles"]):
+        if item.partition("@")[0].strip() == "?":
+            errors.append(f"{where}: replace ? in {item!r} with one of {', '.join(store.ROLES)}")
+            continue
+        try:
+            role = store.parse_role(item)
+        except PeopleError as e:
+            errors.append(f"{where}: {e}")
+            continue
+        if role.opportunity and role.opportunity not in known:
+            errors.append(f"{where}: {role.opportunity!r} is not an opportunity in the tracker")
+        elif role not in p.roles:
+            p.roles.append(role)
+    sources = [s.strip() for s in cells["Sources"].split(";") if s.strip()]
+    for source in sources:
+        if source not in by_source:
+            errors.append(f"{where}: source {source} doesn't match the files any more — run import --draft again")
+    try:
+        store.check_person(p)
+    except PeopleError as e:
+        errors.append(f"{where}: {e}")
+    return p, sources
+
+
+def _note_section(c: Candidate) -> str:
+    label = c.opportunity or c.file
+    notes = c.notes.strip()
+    return f"\n### From {label}\n" + (f"\n{notes}\n" if notes else "")
+
+
+def _retire_networking(root: Path) -> bool:
+    net = root / NETWORKING
+    if not net.exists():
+        return False
+    text = net.read_text(encoding="utf-8")
+    if NETWORKING_POINTER in text:
+        return False
+    backup = root / NETWORKING_BACKUP
+    prior = backup.read_text(encoding="utf-8") if backup.exists() else ""
+    backup.write_text(prior + ("\n\n" if prior else "") + text, encoding="utf-8")
+    net.write_text(f"# Networking\n\n{NETWORKING_POINTER}\n\nEveryone who was here now has a page in "
+                   f"`people/` (`people.py due`, `people.py find`). The original text is in "
+                   f"`{NETWORKING_BACKUP}`.\n", encoding="utf-8")
+    return True
+
+
+def apply(draft_path: Path) -> str:
+    try:
+        text = draft_path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise PeopleError(f"can't read {draft_path}: {e}") from None
+    draft_id, rows, merges, intro_rows = parse_draft(text)
+    root = store.root()
+    with store.locked():
+        events, _ = store.read_events()
+        if any(e["type"] == "person" and (e.get("detail") or {}).get("import") == draft_id for e in events):
+            return f"draft {draft_id} was already applied; nothing to do"
+        people = store.load_people()
+        known = tracker.known_opportunities()
+        cands, _, opps = collect(root, known)
+        by_source = {c.source: c for c in cands}
+        errors: list[str] = []
+
+        planned, sources = {}, {}
+        for n, cells in rows:
+            num = int(cells["#"]) if cells["#"].isdigit() else None
+            if num is None or num in planned:
+                errors.append(f"{DRAFT_NAME}:{n}: '#' must be a unique row number")
+                continue
+            planned[num], sources[num] = _row_person(num, cells, known, by_source, errors)
+
+        parent = {num: num for num in planned}
+
+        def find(num):
+            while parent[num] != num:
+                num = parent[num]
+            return num
+
+        for n, a, b in merges:
+            if a not in planned or b not in planned:
+                errors.append(f"{DRAFT_NAME}:{n}: merge {a} = {b} names a row that isn't in People")
+                continue
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[max(ra, rb)] = min(ra, rb)
+        final = {}
+        for num in sorted(planned):
+            keep_num = find(num)
+            if keep_num == num:
+                final[num] = planned[num]
+            else:
+                store.merge_fields(final[keep_num], planned[num])
+                sources[keep_num] += sources[num]
+
+        intro_plan = []
+        for n, cells in intro_rows:
+            ref = cells["From"].lstrip("#")
+            to = cells["To"].strip()
+            for_, result = cells["For"].strip(), cells["Result"].strip()
+            if not ref.isdigit() or int(ref) not in planned:
+                errors.append(f"{DRAFT_NAME}:{n}: From must be a row number like #3")
+                continue
+            if to.startswith("#") and to[1:].isdigit() and int(to[1:]) in planned:
+                to = ("row", find(int(to[1:])))
+            elif not (to.startswith("org:") and to[4:].strip()):
+                errors.append(f"{DRAFT_NAME}:{n}: To must be org:<Org> or a row number like #3")
+                continue
+            if for_ and for_ not in known:
+                errors.append(f"{DRAFT_NAME}:{n}: {for_!r} is not an opportunity in the tracker")
+            if result and result not in store.INTRO_RESULTS:
+                errors.append(f"{DRAFT_NAME}:{n}: Result must be one of {', '.join(store.INTRO_RESULTS)} or empty")
+            if result == "led_to_opportunity" and not for_:
+                errors.append(f"{DRAFT_NAME}:{n}: led_to_opportunity needs For")
+            intro_plan.append((find(int(ref)), to, for_, result))
+
+        seen_email: dict[str, int] = {}
+        for num, p in final.items():
+            p.body = ""
+            dup = next((q for q in people.values()
+                        if (p.email and q.email.casefold() == p.email.casefold())
+                        or (q.name.casefold() == p.name.casefold() and q.org.casefold() == p.org.casefold())), None)
+            if dup:
+                errors.append(f"row {num} ({p.name}) duplicates existing page {dup.slug}; delete the row "
+                              "(and use people.py merge later if needed)")
+            if p.email:
+                other = seen_email.setdefault(p.email.casefold(), num)
+                if other != num:
+                    errors.append(f"rows {other} and {num} share {p.email}; tick their Same person? box or fix one")
+        if errors:
+            raise PeopleError("import rejected, nothing written:\n  " + "\n  ".join(errors))
+
+        used = store.used_slugs(people, events)
+        slug_of = {}
+        for num in sorted(final):
+            p = final[num]
+            p.slug = store.allocate_slug(p.name, used)
+            used.add(p.slug)
+            p.body = "\n## Notes\n" + "".join(_note_section(by_source[s]) for s in sources[num])
+            store.save_person(p)
+            people[p.slug] = p
+            slug_of[num] = p.slug
+            store.append_event({"type": "person", "person": p.slug, "action": "add", "inferred": True,
+                                "detail": {"import": draft_id, "sources": sources[num]}})
+        intros = store.intro_states(events, store.merged_into(events))
+        for frm, to, for_, result in intro_plan:
+            intro_id = store.next_intro_id(intros)
+            intros[intro_id] = {}
+            store.append_event({"type": "intro", "intro": intro_id, "status": "closed" if result else "made",
+                                "from": slug_of[frm], "to": to if isinstance(to, str) else slug_of[to[1]],
+                                "for": for_, "result": result,
+                                "opportunity": for_ if result == "led_to_opportunity" else "",
+                                "note": "inferred by import", "inferred": True})
+        changed = store.sync_contacts(set(opps) | store.linked_opportunities(people), known, people)
+        retired = _retire_networking(root)
+    return (f"applied {draft_id}: {len(final)} people, {len(intro_plan)} intros, "
+            f"{len(changed)} contacts.md regenerated" + ("; networking.md moved to people/" if retired else ""))

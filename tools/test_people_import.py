@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import people_import as imp  # noqa: E402
 import tracker  # noqa: E402
 from people_testkit import BF, NW, WorkspaceTestCase  # noqa: E402
+import json  # noqa: E402
 
 COBALT = "cobalt_labs/cto"
 TODAY = datetime.date(2026, 10, 14)
@@ -169,6 +170,106 @@ class DraftTest(ImportFixture):
 
     def test_cli(self):
         self.assertIn("people-import-draft.md", self.people("import", "--draft"))
+
+
+class ApplyTest(ImportFixture):
+    def edited_draft(self, merge_danas=False):
+        _, text = self.draft()
+        text = text.replace("| ? @ ", "| other @ ")
+        if merge_danas:
+            text = text.replace("- [ ] ", "- [x] ", 1)
+        (self.root / imp.DRAFT_NAME).write_text(text)
+        return text
+
+    def apply(self):
+        return self.people("import", "--apply", imp.DRAFT_NAME)
+
+    def test_unresolved_roles_reject_everything(self):
+        self.draft()
+        err = self.people_error("import", "--apply", imp.DRAFT_NAME)
+        self.assertIn("(Pat Lin): replace ?", err)
+        self.assertFalse((self.root / "people").exists())
+        self.assertEqual(self.events(), [])
+        self.assertEqual(self.contacts(NW), NW_CONTACTS)
+
+    def test_apply_creates_pages_with_notes_by_source(self):
+        self.edited_draft()
+        self.assertIn("8 people", self.apply())
+        lee = self.page("lee_park")
+        self.assertIn(f"roles: connector @ {BF}, peer", lee)
+        self.assertIn(f"### From {BF}", lee)
+        self.assertIn("### From networking.md", lee)
+        self.assertIn("Coffee every quarter.", lee)
+        self.assertIn("roles: hiring\n", self.page("rae_chu"))
+        adds = [e for e in self.events() if e["type"] == "person"]
+        self.assertEqual(len(adds), 8)
+        self.assertTrue(all(e["inferred"] and e["detail"]["import"].startswith("d-") for e in adds))
+
+    def test_contacts_regenerated_with_originals_kept(self):
+        self.edited_draft()
+        self.apply()
+        self.assertIn("| Dana Reyes | recruiter | [[people/dana_reyes]] |", self.contacts(NW))
+        self.assertEqual((self.root / "opportunity" / NW / "contacts.hand-written.md").read_text(), NW_CONTACTS)
+        self.assertEqual(self.contacts("ghost_co/cto"), GHOST_CONTACTS)  # not in the tracker: left alone
+        self.assertIn("people/", (self.root / "networking.md").read_text())
+        self.assertEqual((self.root / "networking.hand-written.md").read_text(), NETWORKING)
+
+    def test_everyone_named_before_is_named_after(self):
+        self.edited_draft()
+        self.apply()
+        for name in ("Dana Reyes", "Sam Ortiz", "Ann Bo"):
+            self.assertIn(f"| {name} |", self.contacts(NW))
+        for name in ("Lee Park", "Kim Vo"):
+            self.assertIn(f"| {name} |", self.contacts(BF))
+
+    def test_notes_text_is_not_lost(self):
+        self.edited_draft()
+        self.apply()
+        source = sum(len(line.split("|")[5].split()) for line in NW_CONTACTS.splitlines()[4:])
+        imported = sum(len(p.read_text().split()) for p in (self.root / "people").glob("*.md"))
+        self.assertGreaterEqual(imported, source)
+        for line in NW_CONTACTS.splitlines()[4:]:
+            note = line.split("|")[5].strip()
+            self.assertTrue(any(note in p.read_text() for p in (self.root / "people").glob("*.md")), note)
+
+    def test_inferred_intro_recorded(self):
+        self.edited_draft()
+        self.apply()
+        [intro] = [e for e in self.events() if e["type"] == "intro"]
+        self.assertEqual((intro["from"], intro["to"], intro["status"], intro["result"], intro["opportunity"],
+                          intro["inferred"]),
+                         ("lee_park", "org:Bluefin Security", "closed", "led_to_opportunity", BF, True))
+
+    def test_ticked_merge(self):
+        self.edited_draft(merge_danas=True)
+        self.assertIn("7 people", self.apply())
+        page = self.page("dana_reyes")
+        self.assertIn("recruiter @ northwind_motors/vp_of_engineering", page)
+        self.assertIn("A different Dana, met at a meetup.", page)
+        self.assertFalse((self.root / "people" / "dana_reyes_2.md").exists())
+
+    def test_reapply_is_a_no_op(self):
+        self.edited_draft()
+        self.apply()
+        before = len(self.events())
+        self.assertIn("already applied", self.apply())
+        self.assertEqual(len(self.events()), before)
+
+    def test_existing_page_duplicate_is_refused(self):
+        self.edited_draft()
+        self.people("add", "Sam Ortiz", "--org", "Northwind Motors")
+        self.assertIn("(Sam Ortiz) duplicates existing page sam_ortiz", self.people_error("import", "--apply", imp.DRAFT_NAME))
+
+    def test_stale_draft_is_refused(self):
+        self.edited_draft()
+        (self.root / "opportunity" / COBALT / "contacts.md").unlink()
+        self.assertIn("run import --draft again", self.people_error("import", "--apply", imp.DRAFT_NAME))
+
+    def test_export_after_import(self):
+        self.edited_draft()
+        self.apply()
+        data = json.loads(self.people("export", "--json"))
+        self.assertEqual(len(data["people"]), 8)
 
 
 if __name__ == "__main__":
