@@ -734,18 +734,18 @@ class AmendClosedTest(_CLIBase):
 
 class RemoveTest(_CLIBase):
     def test_removes_active_row_notes_reason_and_logs(self):
-        self.ok("add", "Rich", "Networking", "--stage", "Identified", "--source", "Other")
-        self.ok("remove", "Rich", "Networking", "--reason", "networking contact, moved to networking.md")
+        self.ok("add", "Orla", "Networking", "--stage", "Identified", "--source", "Other")
+        self.ok("remove", "Orla", "Networking", "--reason", "networking contact, moved to networking.md")
         self.assertEqual(tracker.read_table(tracker.active_path()), [])
         self.assertEqual(tracker.read_table(tracker.closed_path(), tracker.CLOSED_COLUMNS), [])
-        notes = Path("opportunity/rich/networking/notes.md").read_text()
+        notes = Path("opportunity/orla/networking/notes.md").read_text()
         self.assertIn("Removed from tracker", notes)
         self.assertIn("moved to networking.md", notes)
         self.assertEqual(self.events()[-1]["type"], "remove")
 
     def test_removed_opportunity_is_not_an_orphan_in_export(self):
-        self.ok("add", "Rich", "Networking", "--stage", "Identified", "--source", "Other")
-        self.ok("remove", "Rich", "Networking", "--reason", "r")
+        self.ok("add", "Orla", "Networking", "--stage", "Identified", "--source", "Other")
+        self.ok("remove", "Orla", "Networking", "--reason", "r")
         self.assertEqual(json.loads(self.ok("export", "--json").stdout)["warnings"], [])
 
     def test_remove_requires_reason_and_existing_row(self):

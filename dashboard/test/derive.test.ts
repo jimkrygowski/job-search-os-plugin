@@ -148,8 +148,8 @@ test("events of a removed opportunity are dropped silently", () => {
   const p = derive(exp({
     active: [row("Acme", "VP")],
     events: [
-      ev("Rich", "Networking", "add", "2026-08-01T10:00:00", { to: "Identified" }),
-      ev("Rich", "Networking", "remove", "2026-09-29T10:00:00"),
+      ev("Orla", "Networking", "add", "2026-08-01T10:00:00", { to: "Identified" }),
+      ev("Orla", "Networking", "remove", "2026-09-29T10:00:00"),
     ],
   }), opts);
   assert.equal(p.records.length, 1);
@@ -158,11 +158,11 @@ test("events of a removed opportunity are dropped silently", () => {
 
 test("a removed-then-re-added opportunity keeps only its new lifetime", () => {
   const p = derive(exp({
-    active: [row("Rich", "Networking", { stage: "Applied" })],
+    active: [row("Orla", "Networking", { stage: "Applied" })],
     events: [
-      ev("Rich", "Networking", "add", "2026-08-01T10:00:00", { to: "Identified" }),
-      ev("Rich", "Networking", "remove", "2026-08-05T10:00:00"),
-      ev("Rich", "Networking", "add", "2026-09-01T10:00:00", { to: "Applied" }),
+      ev("Orla", "Networking", "add", "2026-08-01T10:00:00", { to: "Identified" }),
+      ev("Orla", "Networking", "remove", "2026-08-05T10:00:00"),
+      ev("Orla", "Networking", "add", "2026-09-01T10:00:00", { to: "Applied" }),
     ],
   }), opts);
   assert.deepEqual(p.records[0]!.path.map((s) => s.ts), ["2026-09-01T10:00:00"]);
