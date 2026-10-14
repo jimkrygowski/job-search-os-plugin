@@ -155,3 +155,197 @@ def serialize_page(p: Person) -> str:
     values = _values(p)
     block = [f"{key}: {values[key]}" for key in FIELD_ORDER if values[key]]
     return "\n".join(["---", *block, "---"]) + "\n" + p.body
+
+
+# --- workspace files -------------------------------------------------------
+
+def root() -> Path:
+    return workspace.require_root()
+
+
+def people_dir() -> Path:
+    return root() / "people"
+
+
+def events_path() -> Path:
+    return root() / "people_events.jsonl"
+
+
+def page_path(slug: str) -> Path:
+    return people_dir() / f"{slug}.md"
+
+
+def locked():
+    """Held for every people.py command. people.py may take the tracker's
+    lock while holding this one; tracker.py never takes this one."""
+    return tracker.file_lock(root() / ".people.lock", holder="people.py")
+
+
+def load_people() -> dict[str, Person]:
+    """Every person page. Files starting with "_" are not person pages
+    (room for an index); any other unreadable page is an error."""
+    folder = people_dir()
+    if not folder.is_dir():
+        return {}
+    people = {}
+    for path in sorted(folder.glob("*.md")):
+        if path.name.startswith("_"):
+            continue
+        if not _SLUG.fullmatch(path.stem):
+            raise PeopleError(f"people/{path.name}: not a person page name (lowercase letters, digits "
+                              "and _ only); rename it, or start it with _ if it isn't a person")
+        people[path.stem] = parse_page(path.read_text(encoding="utf-8"), path.stem, f"people/{path.name}")
+    return people
+
+
+def save_person(p: Person) -> None:
+    check_person(p)
+    people_dir().mkdir(parents=True, exist_ok=True)
+    page_path(p.slug).write_text(serialize_page(p), encoding="utf-8")
+
+
+def delete_person(slug: str) -> None:
+    page_path(slug).unlink()
+
+
+# --- event log ---------------------------------------------------------------
+
+def append_event(event: dict) -> None:
+    record = {"ts": event.get("ts") or tracker.now_ts(), **event,
+              "inferred": event.get("inferred", False)}
+    with events_path().open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def read_events() -> tuple[list[dict], list[str]]:
+    path = events_path()
+    if not path.exists():
+        return [], []
+    events, warnings = [], []
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            warnings.append(f"line {n} of people_events.jsonl is not valid JSON")
+            continue
+        if not isinstance(event, dict) or not {"ts", "type"} <= event.keys():
+            warnings.append(f"line {n} of people_events.jsonl is missing ts or type")
+            continue
+        events.append(event)
+    return events, warnings
+
+
+def merged_into(events: list[dict]) -> dict[str, str]:
+    """Dropped slug -> surviving slug, following chains (a into b, b into c)."""
+    direct = {e["detail"]["from"]: e["person"] for e in events
+              if e["type"] == "person" and e.get("action") == "merge"}
+    out = {}
+    for start in direct:
+        slug, seen = start, {start}
+        while slug in direct and direct[slug] not in seen:
+            slug = direct[slug]
+            seen.add(slug)
+        out[start] = slug
+    return out
+
+
+def used_slugs(people: dict[str, Person], events: list[dict]) -> set[str]:
+    """Slugs that may never be handed out again: current pages plus every
+    slug the event log mentions (merged-away people included)."""
+    used = set(people)
+    for e in events:
+        for key in ("person", "from", "to"):
+            value = e.get(key)
+            if isinstance(value, str) and value and not value.startswith("org:"):
+                used.add(value)
+        detail = e.get("detail")
+        if isinstance(detail, dict) and isinstance(detail.get("from"), str):
+            used.add(detail["from"])
+    return used
+
+
+def allocate_slug(name: str, used: set[str]) -> str:
+    base = tracker.slugify(name)
+    slug, n = base, 2
+    while slug in used:
+        slug, n = f"{base}_{n}", n + 1
+    return slug
+
+
+def describe(p: Person) -> str:
+    return f"{p.slug}  {p.name}" + (f" ({p.org})" if p.org else "")
+
+
+def resolve(text: str, people: dict[str, Person], merges: dict[str, str]) -> Person:
+    """A <person> argument: slug (or merged-away slug), then email, then
+    exact name, then alias, all case-insensitive. Never fuzzy."""
+    key = text.strip()
+    slug = merges.get(key, key)
+    if slug in people:
+        return people[slug]
+    wanted = key.casefold()
+    tests = (lambda p: bool(p.email) and p.email.casefold() == wanted,
+             lambda p: p.name.casefold() == wanted,
+             lambda p: any(a.casefold() == wanted for a in p.aliases))
+    for test in tests:
+        hits = sorted((p for p in people.values() if test(p)), key=lambda p: p.slug)
+        if len(hits) == 1:
+            return hits[0]
+        if hits:
+            raise PeopleError(f"{text!r} matches more than one person — use a slug:\n"
+                              + "\n".join(f"  {describe(p)}" for p in hits))
+    raise PeopleError(f"no one matches {text!r} (try: people.py find)")
+
+
+# --- reading the log ---------------------------------------------------------
+
+def stall_days() -> int:
+    try:
+        config = json.loads((root() / workspace.MARKER).read_text())
+    except (OSError, json.JSONDecodeError):
+        return 21
+    dashboard = config.get("dashboard") if isinstance(config, dict) else None
+    value = dashboard.get("stallDays") if isinstance(dashboard, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 21
+
+
+def touches_of(slug: str, events: list[dict], merges: dict[str, str]) -> list[dict]:
+    hits = [e for e in events if e["type"] == "touch" and merges.get(e.get("person"), e.get("person")) == slug]
+    return sorted(hits, key=lambda e: e["ts"])
+
+
+def last_touches(events: list[dict], merges: dict[str, str]) -> dict[str, dict]:
+    latest: dict[str, dict] = {}
+    for e in events:
+        if e["type"] != "touch":
+            continue
+        slug = merges.get(e.get("person"), e.get("person"))
+        if slug not in latest or e["ts"] >= latest[slug]["ts"]:
+            latest[slug] = e
+    return latest
+
+
+def intro_states(events: list[dict], merges: dict[str, str]) -> dict[str, dict]:
+    """Current state of every intro: its latest event, with from/to/for/note
+    carried forward from earlier events and people resolved through merges."""
+    intros: dict[str, dict] = {}
+    for e in sorted((e for e in events if e["type"] == "intro"), key=lambda e: e["ts"]):
+        i = intros.setdefault(e["intro"], {"id": e["intro"], "from": "", "to": "", "for": "",
+                                           "note": "", "offered": e["ts"], "history": []})
+        i["history"].append({"status": e["status"], "ts": e["ts"]})
+        for key in ("from", "to", "for", "note", "result", "opportunity"):
+            if e.get(key):
+                i[key] = e[key]
+        i["status"], i["updated"], i["inferred"] = e["status"], e["ts"], e.get("inferred", False)
+    for i in intros.values():
+        i["from"] = merges.get(i["from"], i["from"])
+        if not i["to"].startswith("org:"):
+            i["to"] = merges.get(i["to"], i["to"])
+    return intros
+
+
+def next_intro_id(intros: dict[str, dict]) -> str:
+    numbers = [int(k[2:]) for k in intros if k.startswith("i-") and k[2:].isdigit()]
+    return f"i-{max(numbers, default=0) + 1}"

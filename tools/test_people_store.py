@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import people_store as store  # noqa: E402
 from people_store import Person, PeopleError, Role  # noqa: E402
+from people_testkit import WorkspaceTestCase  # noqa: E402
 
 CANONICAL = """---
 name: Dana Reyes
@@ -88,6 +89,122 @@ class PageFormatTest(unittest.TestCase):
         self.assertEqual(store.parse_role("Recruiter@northwind_motors/vp_of_engineering"),
                          Role("recruiter", "northwind_motors/vp_of_engineering"))
         self.assertEqual(str(store.parse_role("peer")), "peer")
+
+
+class StoreOnDiskTest(WorkspaceTestCase):
+    def test_no_people_dir_means_no_people(self):
+        self.assertEqual(store.load_people(), {})
+
+    def test_save_then_load(self):
+        p = Person(slug="dana_reyes", name="Dana Reyes", email="dana.reyes@example.com")
+        store.save_person(p)
+        self.assertEqual(store.load_people(), {"dana_reyes": p})
+
+    def test_hand_edited_page_is_reread(self):
+        store.save_person(Person(slug="dana_reyes", name="Dana Reyes"))
+        path = self.root / "people" / "dana_reyes.md"
+        path.write_text(path.read_text().replace("name: Dana Reyes", "name: Dana Reyes\ntitle: Recruiter")
+                        + "Hand-written line.\n")
+        p = store.load_people()["dana_reyes"]
+        self.assertEqual(p.title, "Recruiter")
+        self.assertTrue(p.body.endswith("Hand-written line.\n"))
+
+    def test_underscore_files_are_not_people(self):
+        (self.root / "people").mkdir()
+        (self.root / "people" / "_index.md").write_text("# Index\n")
+        self.assertEqual(store.load_people(), {})
+
+    def test_malformed_page_names_file_and_line(self):
+        (self.root / "people").mkdir()
+        (self.root / "people" / "dana_reyes.md").write_text("---\nname: Dana\nbogus\n---\n")
+        with self.assertRaises(PeopleError) as cm:
+            store.load_people()
+        self.assertIn("people/dana_reyes.md:3", str(cm.exception))
+
+    def test_file_name_that_is_not_a_slug_is_an_error(self):
+        (self.root / "people").mkdir()
+        (self.root / "people" / "Dana Reyes.md").write_text("---\nname: Dana\n---\n")
+        with self.assertRaises(PeopleError) as cm:
+            store.load_people()
+        self.assertIn("Dana Reyes.md", str(cm.exception))
+
+    def test_events_round_trip_and_bad_lines_warn(self):
+        store.append_event({"type": "touch", "person": "a", "channel": "email", "note": ""})
+        with store.events_path().open("a") as f:
+            f.write("not json\n{\"type\": \"touch\"}\n")
+        events, warnings = store.read_events()
+        self.assertEqual(len(events), 1)
+        self.assertFalse(events[0]["inferred"])
+        self.assertEqual(len(warnings), 2)
+
+    def test_allocate_slug_numbers_collisions(self):
+        self.assertEqual(store.allocate_slug("Dana Reyes", set()), "dana_reyes")
+        self.assertEqual(store.allocate_slug("Dana Reyes", {"dana_reyes"}), "dana_reyes_2")
+        self.assertEqual(store.allocate_slug("Dana Reyes", {"dana_reyes", "dana_reyes_2"}), "dana_reyes_3")
+
+    def test_used_slugs_include_slugs_only_in_events(self):
+        events = [{"ts": "x", "type": "person", "person": "dana_reyes", "action": "merge",
+                   "detail": {"from": "dana_reyes_2"}}]
+        self.assertEqual(store.used_slugs({}, events), {"dana_reyes", "dana_reyes_2"})
+
+    def test_merged_into_follows_chains(self):
+        events = [{"ts": "1", "type": "person", "person": "b", "action": "merge", "detail": {"from": "a"}},
+                  {"ts": "2", "type": "person", "person": "c", "action": "merge", "detail": {"from": "b"}}]
+        self.assertEqual(store.merged_into(events), {"a": "c", "b": "c"})
+
+    def _people(self):
+        return {p.slug: p for p in [
+            Person(slug="dana_reyes", name="Dana Reyes", org="Northwind Motors", email="Dana@Example.com",
+                   aliases=["Dana Reyes-Kim"]),
+            Person(slug="dana_reyes_2", name="Dana Reyes", org="Bluefin Security"),
+            Person(slug="lee_park", name="Lee Park")]}
+
+    def test_resolve_by_slug_email_name_alias(self):
+        people = self._people()
+        self.assertEqual(store.resolve("lee_park", people, {}).slug, "lee_park")
+        self.assertEqual(store.resolve("dana@example.COM", people, {}).slug, "dana_reyes")
+        self.assertEqual(store.resolve("lee park", people, {}).slug, "lee_park")
+        self.assertEqual(store.resolve("Dana Reyes-Kim", people, {}).slug, "dana_reyes")
+
+    def test_resolve_merged_away_slug_finds_survivor(self):
+        self.assertEqual(store.resolve("old_slug", self._people(), {"old_slug": "lee_park"}).slug, "lee_park")
+
+    def test_resolve_ambiguous_lists_candidates_with_org(self):
+        with self.assertRaises(PeopleError) as cm:
+            store.resolve("Dana Reyes", self._people(), {})
+        self.assertIn("dana_reyes  Dana Reyes (Northwind Motors)", str(cm.exception))
+        self.assertIn("dana_reyes_2  Dana Reyes (Bluefin Security)", str(cm.exception))
+
+    def test_resolve_never_fuzzy(self):
+        with self.assertRaises(PeopleError):
+            store.resolve("Dana", self._people(), {})
+
+    def test_stall_days(self):
+        self.assertEqual(store.stall_days(), 21)
+        self.set_config(dashboard={"stallDays": 30})
+        self.assertEqual(store.stall_days(), 30)
+        self.set_config(dashboard={"stallDays": "soon"})
+        self.assertEqual(store.stall_days(), 21)
+
+    def test_intro_states_take_latest_event_and_resolve_merges(self):
+        events = [
+            {"ts": "2026-09-01T09:00:00", "type": "intro", "intro": "i-1", "status": "offered",
+             "from": "old", "to": "org:Bluefin Security", "for": "", "note": "coffee"},
+            {"ts": "2026-09-05T09:00:00", "type": "intro", "intro": "i-1", "status": "made"},
+        ]
+        i = store.intro_states(events, {"old": "lee_park"})["i-1"]
+        self.assertEqual((i["status"], i["from"], i["to"], i["updated"], i["offered"]),
+                         ("made", "lee_park", "org:Bluefin Security", "2026-09-05T09:00:00",
+                          "2026-09-01T09:00:00"))
+        self.assertEqual(store.next_intro_id({"i-1": i, "i-9": i}), "i-10")
+        self.assertEqual(store.next_intro_id({}), "i-1")
+
+    def test_touches_resolve_merges(self):
+        events = [{"ts": "2026-09-01T09:00:00", "type": "touch", "person": "old", "channel": "email", "note": ""},
+                  {"ts": "2026-09-03T09:00:00", "type": "touch", "person": "lee_park", "channel": "call", "note": ""}]
+        merges = {"old": "lee_park"}
+        self.assertEqual(len(store.touches_of("lee_park", events, merges)), 2)
+        self.assertEqual(store.last_touches(events, merges)["lee_park"]["channel"], "call")
 
 
 if __name__ == "__main__":
