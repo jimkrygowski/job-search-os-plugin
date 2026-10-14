@@ -8,6 +8,7 @@ from people_testkit import BF, NW, WorkspaceTestCase  # noqa: E402
 import concurrent.futures  # noqa: E402
 import datetime  # noqa: E402
 import subprocess  # noqa: E402
+import json  # noqa: E402
 
 
 class AddTest(WorkspaceTestCase):
@@ -315,6 +316,25 @@ class MergeTest(WorkspaceTestCase):
 
     def test_merge_with_self_fails(self):
         self.assertIn("same person", self.people_error("merge", "dana_reyes", "Dana Reyes"))
+
+
+class ExportTest(WorkspaceTestCase):
+    def test_export(self):
+        self.people("add", "Dana Reyes", "--role", f"recruiter@{NW}", "--relationship", "yes")
+        self.people("add", "Old Dana", "--email", "old@example.com")
+        self.people("touch", "old_dana", "--channel", "call", "--date", days_ago(1))
+        self.people("merge", "dana_reyes", "old_dana")
+        self.people("intro", "offer", "dana_reyes", "--to-org", "Bluefin Security")
+        with (self.root / "people_events.jsonl").open("a") as f:
+            f.write("garbage\n")
+        data = json.loads(self.people("export", "--json"))
+        self.assertEqual(data["schema"], 1)
+        [person] = data["people"]
+        self.assertEqual(person["roles"], [{"role": "recruiter", "opportunity": NW}])
+        self.assertEqual([t["person"] for t in data["touches"]], ["dana_reyes"])
+        self.assertEqual(data["intros"][0]["status"], "offered")
+        self.assertEqual(data["merges"], {"old_dana": "dana_reyes"})
+        self.assertEqual(len(data["warnings"]), 1)
 
 
 if __name__ == "__main__":

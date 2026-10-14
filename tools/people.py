@@ -368,6 +368,35 @@ def cmd_merge(args):
         store.sync_contacts(affected, st.known, st.people)
     print(f"merged {drop.slug} into {store.describe(keep)}")
 
+def export_data() -> dict:
+    """Everything a phase-2 dashboard view needs, as plain JSON."""
+    with store.locked():
+        events, warnings = store.read_events()
+        people = store.load_people()
+    merges = store.merged_into(events)
+    intros = store.intro_states(events, merges)
+    return {
+        "schema": 1,
+        "roles": store.ROLES,
+        "people": [{"slug": p.slug, "name": p.name, "org": p.org, "title": p.title, "email": p.email,
+                    "relationship": p.relationship, "cadence": p.cadence, "next_touch": p.next_touch,
+                    "roles": [{"role": r.role, "opportunity": r.opportunity} for r in p.roles],
+                    "aliases": p.aliases}
+                   for p in sorted(people.values(), key=lambda p: p.slug)],
+        "touches": [{"ts": e["ts"], "person": merges.get(e.get("person"), e.get("person")),
+                     "channel": e.get("channel", ""), "note": e.get("note", ""),
+                     "inferred": e.get("inferred", False)}
+                    for e in events if e["type"] == "touch"],
+        "intros": sorted(intros.values(), key=lambda i: int(i["id"][2:])),
+        "merges": merges,
+        "warnings": warnings,
+    }
+
+
+def cmd_export(args):
+    json.dump(export_data(), sys.stdout, indent=2, ensure_ascii=False)
+    print()
+
 def build_parser():
     parser = argparse.ArgumentParser(description="People, follow-ups and intros")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -455,6 +484,10 @@ def build_parser():
     p_merge.add_argument("keep")
     p_merge.add_argument("drop")
     p_merge.set_defaults(func=cmd_merge)
+
+    p_export = sub.add_parser("export")
+    p_export.add_argument("--json", action="store_true", required=True)
+    p_export.set_defaults(func=cmd_export)
 
     return parser
 

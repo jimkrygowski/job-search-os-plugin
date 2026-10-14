@@ -36,6 +36,7 @@ class NoBytecodeInPluginRootTest(unittest.TestCase):
         self.run_tool("session_start.py", stdin="{}")
         self.run_tool("guard_send.py", stdin=json.dumps({"tool_name": "x"}))
         self.run_tool("tracker.py", "list")
+        self.run_tool("people.py", "find", "x")
         self.run_tool("score_table.py", "criteria")
         self.run_tool("check_bootstrap_state.py")
         self.run_tool("migrate.py", "--from", str(self.tmp / "nope"), "--dry-run")
