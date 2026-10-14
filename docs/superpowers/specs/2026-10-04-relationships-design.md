@@ -2,7 +2,7 @@
 
 Date: 2026-10-04
 Status: approved in conversation, pending written-spec review
-Target release: plugin v0.3.0 (after v0.2.0 ships)
+Target release: plugin v0.3.0
 
 ## Intent
 
@@ -18,7 +18,7 @@ rhythm**, and treats **intros as a pipeline**. Measuring which
 relationships produce results (dashboard views) is phase 2; the data model
 is built so it can answer that.
 
-### Decisions (from interview)
+### Decisions
 
 | Topic | Decision |
 |---|---|
@@ -67,7 +67,7 @@ aliases: Dana Reyes-Kim
 ...free-form; never modified by the tool...
 ```
 
-**Field block format** (deliberately not YAML; stdlib-only):
+**Field block format:**
 - Delimited by the first line `---` and the next line that is exactly `---`.
   The block is only recognized at the very top of the file.
 - One `key: value` per line; the key is `[a-z_]+`, split at the first `: `.
@@ -90,10 +90,22 @@ An entry is `role @ opportunity-slug` (slug = `tracker.py`'s
 closed) or a bare `role` (not tied to an opportunity). The same person may
 hold several entries, including different roles on one opportunity.
 
-**Slugs:** `slugify(name)` with `-` separators (e.g. `dana-reyes`);
-on collision `-2`, `-3`… A `<person>` argument resolves by slug, then
-email, then exact name (case-insensitive), then alias. More than one match
-→ error listing the candidates; zero → error. Never fuzzy.
+**Slugs:** `tracker.py`'s `slugify`: lowercase, `_` separators (e.g.
+`dana_reyes`).
+
+- **A slug is the person's primary key.** It is assigned once, by `add`
+  or `import --apply`, and never changes. Events, intros, role links and
+  `[[people/<slug>]]` links all point at it. `update --name` changes
+  `name` and adds the previous name to `aliases`; the page file keeps
+  its name.
+- **Collisions:** `dana_reyes_2`, `dana_reyes_3`… `show`, `find` and the
+  ambiguous-match error print name and org next to each slug.
+- A slug is retired only by `merge`; the dropped slug resolves through
+  the `person/merge` event.
+
+A `<person>` argument resolves by slug, then email, then exact name
+(case-insensitive), then alias. More than one match → error listing the
+candidates; zero → error. Never fuzzy.
 
 ### Event log — `people_events.jsonl`
 
@@ -131,10 +143,11 @@ via `workspace.require_root()`; mutual exclusion via a `.people.lock`
 | Command | Behavior |
 |---|---|
 | `add "Name" [--org --title --email] [--role R@opp|R …] [--relationship yes\|no] [--cadence Nd\|none] [--next-touch D]` | Creates the page. Refuses a duplicate (same email, or same name + org) and names the existing page. |
-| `update <person> [field flags…]` | Changes fields; body untouched. |
+| `update <person> [field flags…]` | Changes fields; body untouched. Never changes the slug; `--name` moves the old name into `aliases`. |
 | `role <person> --add R@opp|R` / `--drop …` | Edits roles; opportunity must exist in the tracker. |
 | `show <person>` | Fields, roles, last 10 touches, open intros. |
 | `find <text>` | Substring match over name, org, email, aliases. |
+| `emails [--active] [--opportunity opp]` | One email per line: everyone with an email who is linked to an active opportunity or has `relationship: yes` (`--active`), or everyone linked to one opportunity. The sender list for morning-scan. |
 | `merge <keep> <drop>` | Union of roles and aliases (drop's name becomes an alias); drop's body appended under `## Merged from <name>`; events for `drop` are re-pointed by a `person/merge` event (readers resolve through it); drop's page removed. |
 | `touch <person> --channel C [--date D] [--note N]` | Logs a touch; applies the follow-up rule. |
 | `due [--within Nd]` | Relationships with `next_touch` ≤ today + window (overdue first), then stalled intros, then open intros waiting on the user (status `offered` where the user owes a reply is not modeled in v1; listed as open). |
@@ -152,14 +165,47 @@ today, `<date>T09:00:00` otherwise).
 
 ### Generated `contacts.md`
 
+Every opportunity folder (`opportunity/<company>/<role>/`) has a
+`contacts.md`: the cast list for that opening (recruiter, hiring
+manager, connector, panelists). `interview-prep` reads it to know who is
+on a call. A person is recorded once, on their page under `people/`;
+the page's `roles` field links them to opportunities
+(`recruiter @ northwind_motors/vp_of_engineering`), and each
+`contacts.md` is generated from those links.
+
+- **Columns:** Name, Role, Page. Org, title and email live only on the
+  person page; anything that needs them uses `people.py` (`show`,
+  `emails`, `export --json`), never `contacts.md`.
+- **Rows:** one per role whose opportunity slug is that folder, so a
+  person with two roles on the opportunity has two rows. Bare roles
+  (no opportunity) appear in no `contacts.md`.
+- **Which opportunities:** every opportunity folder, active or closed.
+- **Link to the tracker:** the opportunity slug is the folder slug that
+  `tracker.py opportunity-path` resolves, so a role can only point at an
+  opportunity the tracker knows. The tracker never reads people data.
+- **Regeneration:** `people.py` rewrites the `contacts.md` of each
+  affected opportunity when a name or role link changes: `add` with a
+  role, `role --add`/`--drop`, `update --name`, `merge`, `import
+  --apply`. Other writes leave it alone. `sync-contacts` rebuilds one or
+  all on demand.
+- **Notes:** per-person notes live on the person page (import appends
+  each source Notes cell under `### From <opportunity>`). Skills follow
+  the Page link or run `people.py show` for anything beyond name and
+  role.
+- **Read-only:** the file starts with a "generated" comment, the persona
+  says never to edit it by hand, and a hand edit is overwritten at the
+  next regeneration.
+
+Example, for `opportunity/northwind_motors/vp_of_engineering/`:
+
 ```markdown
 # Contacts — Northwind Motors / VP of Engineering
 
 <!-- generated by people.py — edit people/ pages via people.py, not this file -->
 
-| Name | Role | Org | Title | Email | Page |
-| --- | --- | --- | --- | --- | --- |
-| Dana Reyes | recruiter | Northwind Motors | Senior Manager, … | dana.reyes@… | [[people/dana-reyes]] |
+| Name | Role | Page |
+| --- | --- | --- |
+| Dana Reyes | recruiter | [[people/dana_reyes]] |
 ```
 
 Rows sorted by role (recruiter, hiring, connector, peer, panelist, other),
@@ -202,12 +248,16 @@ linked people gets the header and an empty table.
   --add`; never hand-edit `contacts.md`; log conversations with
   `people.py touch`, intros with `people.py intro`; data-file map gains
   `people/`, `people_events.jsonl`; `networking.md` retired.
-- **`morning-scan`:** new step runs `people.py due --within 3d` and
-  reports due relationships, stalled intros, open intros; the existing
-  email tier logs an `email` touch for each new message from a known
-  person (matched by email).
+- **`morning-scan`:** Tier 1 builds its sender list from `people.py
+  emails --active` and logs an `email` touch for each new message from a
+  known person (matched by email). A new step runs `people.py due
+  --within 3d` and reports due relationships, stalled intros and open
+  intros.
 - **`interview-review`, `summarize-call`:** touch every attendee
   (`call`/`meeting`), add new attendees with a role, record intros offered.
+- **`interview-prep`:** reads `contacts.md` for who is on the call, then
+  each attendee's page (`people.py show`) for their notes across every
+  opportunity.
 - **`company-research`:** people found get pages with `relationship: no`
   and a role on the opportunity.
 - **`score-opportunity`:** when an opportunity came through a person,
@@ -228,18 +278,25 @@ Python stdlib `unittest`, in `tools/test_people.py`, plus skill checks in
   (including `---` lines and trailing whitespace); unicode, commas in
   `name`/`org`, `@` in emails; malformed block → error with line, no write;
   unknown key → error; a hand-edited page is re-read, not clobbered.
-- **People:** duplicate refusal; ambiguous `<person>` lists candidates;
-  slug collisions; `merge` keeps both bodies, unions roles, removes the
-  dropped page, resolves the dropped slug through the merge event; role
-  on an unknown opportunity rejected.
+- **People:** duplicate refusal; ambiguous `<person>` lists candidates
+  with name and org; slug collisions get `_2`, `_3`; a rename or org
+  change keeps the slug and the page file, and the old name becomes an
+  alias and still resolves; `merge` keeps both bodies, unions roles,
+  removes the dropped page, resolves the dropped slug through the merge
+  event; role on an unknown opportunity rejected.
 - **Follow-ups:** touch rolls `next_touch`; a later explicit date is
   kept; `cadence: none` never due; `relationship: no` never due; `due
   --within` boundary.
 - **Intros:** no backward moves; skip-forward allowed; closed intro is
   immutable; `led_to_opportunity` requires an existing opportunity;
   `offer --for` adds the connector role; stall threshold uses `stallDays`.
-- **contacts.md:** generated content and header; regenerated on writes
-  for touched opportunities only; sorting; escaping.
+- **contacts.md:** generated content and header; exactly the Name, Role
+  and Page columns; regenerated on name/role changes for touched
+  opportunities only, and not on an org/title/email change; sorting;
+  escaping.
+- **emails:** `--active` covers active-opportunity links and
+  `relationship: yes`, skips people with no email, de-duplicates;
+  `--opportunity` scoping.
 - **Import:** fake fixtures modeled on the real shapes (tables with
   differing columns, bullet lists, networking.md) — no real data in the
   repo; email merge; name+org merge; non-exact candidates listed not
@@ -248,16 +305,15 @@ Python stdlib `unittest`, in `tools/test_people.py`, plus skill checks in
 - **Locking:** concurrent `touch` calls don't clobber (mirrors the
   tracker's concurrency test).
 - **Skills:** persona/skills call `people.py` via `${CLAUDE_PLUGIN_ROOT}`;
-  no instruction to edit `contacts.md` by hand; morning-scan calls `due`;
+  no instruction to edit `contacts.md` by hand; no skill reads emails
+  from `contacts.md`; morning-scan calls `due` and `emails --active`;
   `run_tests.sh`'s static checks cover `people.py` references.
 
 ## Rollout
 
-1. Ship v0.2.0 first (merge the "No Role" change, tag, user updates the
-   plugin) — the author's workspace is already in v0.2 format.
-2. Build v0.3.0 on `relationships-v1`: this spec → implementation plan →
+1. Build v0.3.0 on `relationships-v1`: this spec → implementation plan →
    test-first implementation → PR → independent review → merge → tag.
-3. Run the import on the author's workspace: dry run on a copy, draft,
+2. Run the import on the author's workspace: dry run on a copy, draft,
    review, apply, one revertible workspace commit.
 
 ## Out of scope (v1)
