@@ -145,7 +145,7 @@ The plugin lives at this repo's root, so any marketplace can list it with a `git
 ```json
 {
   "name": "job-search-os",
-  "source": { "source": "github", "repo": "jimkrygowski/job-search-os-plugin", "ref": "v0.2.0" }
+  "source": { "source": "github", "repo": "jimkrygowski/job-search-os-plugin", "ref": "v0.3.0" }
 }
 ```
 
