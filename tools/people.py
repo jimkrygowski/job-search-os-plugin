@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # never write into the plugin directory
 sys.path.insert(0, str(Path(__file__).parent))
+import people_import  # noqa: E402
 import people_store as store  # noqa: E402
 import tracker  # noqa: E402
 from people_store import Person, PeopleError, Role  # noqa: E402
@@ -397,6 +398,12 @@ def cmd_export(args):
     json.dump(export_data(), sys.stdout, indent=2, ensure_ascii=False)
     print()
 
+def cmd_import(args):
+    if args.draft:
+        print(people_import.write_draft())
+    else:
+        print(people_import.apply(Path(args.apply)))
+
 def build_parser():
     parser = argparse.ArgumentParser(description="People, follow-ups and intros")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -488,6 +495,12 @@ def build_parser():
     p_export = sub.add_parser("export")
     p_export.add_argument("--json", action="store_true", required=True)
     p_export.set_defaults(func=cmd_export)
+
+    p_import = sub.add_parser("import", help="one-time import of contacts.md files and networking.md")
+    mode = p_import.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--draft", action="store_true")
+    mode.add_argument("--apply", metavar="DRAFT")
+    p_import.set_defaults(func=cmd_import)
 
     return parser
 
