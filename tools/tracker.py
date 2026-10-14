@@ -92,6 +92,11 @@ def opportunity_path(company: str, role: str) -> Path:
     return state_root() / "opportunity" / slugify(company) / slugify(role)
 
 
+def opportunity_slug(company: str, role: str) -> str:
+    """The "<company>/<role>" key used by export and by people.py roles."""
+    return f"{slugify(company)}/{slugify(role)}"
+
+
 def _match(value: str, allowed: list[str]) -> str | None:
     for a in allowed:
         if a.lower() == value.strip().lower():
@@ -178,15 +183,9 @@ def read_events() -> tuple[list[dict], list[str]]:
 
 
 @contextmanager
-def locked(timeout: float = 10.0):
-    """Mutual exclusion for read-modify-write cycles against tracker.md /
-    tracker_closed.md. Concurrent invocations (e.g. morning-scan recording
-    several calendar events in parallel) would otherwise race: both read
-    the same snapshot, and the later write silently clobbers the earlier
-    one. Uses exclusive file creation (portable across platforms) rather
-    than fcntl/msvcrt, to stay stdlib-only without a POSIX-only import.
-    """
-    lock = lock_path()
+def file_lock(lock: Path, timeout: float = 10.0, holder: str = "tracker.py"):
+    """Exclusive-create lock file (portable, stdlib-only). Used for the
+    tracker's lock and, by people.py, for its own."""
     start = time.monotonic()
     while True:
         try:
@@ -197,7 +196,7 @@ def locked(timeout: float = 10.0):
             if time.monotonic() - start > timeout:
                 print(
                     f"error: could not acquire {lock} within {timeout}s "
-                    "— another tracker.py process may be stuck; if you're sure "
+                    f"— another {holder} process may be stuck; if you're sure "
                     "none is running, delete the lock file manually",
                     file=sys.stderr,
                 )
@@ -207,6 +206,19 @@ def locked(timeout: float = 10.0):
         yield
     finally:
         lock.unlink(missing_ok=True)
+
+
+@contextmanager
+def locked(timeout: float = 10.0):
+    """Mutual exclusion for read-modify-write cycles against tracker.md /
+    tracker_closed.md. Concurrent invocations (e.g. morning-scan recording
+    several calendar events in parallel) would otherwise race: both read
+    the same snapshot, and the later write silently clobbers the earlier
+    one. Uses exclusive file creation (portable across platforms) rather
+    than fcntl/msvcrt, to stay stdlib-only without a POSIX-only import.
+    """
+    with file_lock(lock_path(), timeout):
+        yield
 
 
 def escape_cell(value: str) -> str:
@@ -402,6 +414,20 @@ def cmd_close(args):
     print(f"closed {args.company} / {args.role}: {outcome}")
 
 
+def known_opportunities() -> dict[str, dict]:
+    """Every opportunity in tracker.md or tracker_closed.md by slug. For a
+    repeat application the latest row wins, and an active row beats closed."""
+    with locked():
+        active = read_table(active_path())
+        closed = read_table(closed_path(), CLOSED_COLUMNS)
+    known = {}
+    for rows, is_active in ((closed, False), (active, True)):
+        for row in rows:
+            known[opportunity_slug(row["Company"], row["Role"])] = {
+                "company": row["Company"], "role": row["Role"], "active": is_active}
+    return known
+
+
 def last_match(rows, company, role):
     """The most recent row for an opportunity. tracker_closed.md can hold one
     row per past application to the same company/role (closed, re-added,
@@ -479,7 +505,7 @@ def _export_row(row: dict, warnings: list[str], closed: bool, sources: list[str]
     out = {
         "company": row["Company"],
         "role": row["Role"],
-        "slug": f"{slugify(row['Company'])}/{slugify(row['Role'])}",
+        "slug": opportunity_slug(row["Company"], row["Role"]),
         "stage": stage,
         "source": row["Source"],
         "last_activity": row["Last Activity"],

@@ -804,5 +804,46 @@ class CleanupSupportTest(_CLIBase):
         self.assertEqual(len(tracker.read_table(tracker.active_path())), 1)
 
 
+class KnownOpportunitiesTest(unittest.TestCase):
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmpdir = tempfile.TemporaryDirectory()
+        os.chdir(self._tmpdir.name)
+        workspace.init_root(".")
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        self._tmpdir.cleanup()
+
+    def _row(self, company, role):
+        return {"Company": company, "Role": role, "Stage": "Applied", "Last Activity": "2026-09-01",
+                "Next Action": "", "Next Action Date": "", "Source": "Other"}
+
+    def test_slug_format(self):
+        self.assertEqual(tracker.opportunity_slug("Northwind Motors", "VP of Engineering"),
+                         "northwind_motors/vp_of_engineering")
+
+    def test_active_and_closed_rows_are_known_and_active_wins(self):
+        tracker.write_table(tracker.active_path(), [self._row("Northwind Motors", "VP of Engineering")],
+                            tracker.ACTIVE_TITLE)
+        tracker.write_table(tracker.closed_path(), [
+            {**self._row("Northwind Motors", "VP of Engineering"), "Outcome": "Rejected"},
+            {**self._row("Bluefin Security", "Head of Platform"), "Outcome": "Passed"},
+        ], tracker.CLOSED_TITLE, tracker.CLOSED_COLUMNS)
+        known = tracker.known_opportunities()
+        self.assertEqual(known["northwind_motors/vp_of_engineering"],
+                         {"company": "Northwind Motors", "role": "VP of Engineering", "active": True})
+        self.assertFalse(known["bluefin_security/head_of_platform"]["active"])
+
+    def test_empty_workspace_has_no_opportunities(self):
+        self.assertEqual(tracker.known_opportunities(), {})
+
+    def test_file_lock_on_another_path_does_not_block_the_tracker_lock(self):
+        with tracker.file_lock(Path(".people.lock"), holder="people.py"):
+            with tracker.locked(timeout=0.5):
+                pass
+        self.assertFalse(Path(".people.lock").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
