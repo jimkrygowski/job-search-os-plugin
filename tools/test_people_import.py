@@ -117,6 +117,24 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(imp.guess_role(cands[1]), "?")
         self.assertEqual(unparsed, ["c.md:6: | Mutual connection | Degree |", "c.md:8: | Someone Else | 2nd |"])
 
+    def test_sub_heading_inside_a_person_section_stays_with_the_person(self):
+        text = "## Dana Reyes — Senior Recruiter\n\n### Notes\n- Spoke 2026-09-01 about the search.\n"
+        [dana], unparsed = imp.parse_contacts(text, "x.md")
+        self.assertEqual(unparsed, [])
+        self.assertIn("Spoke 2026-09-01 about the search.", dana.notes)
+
+    def test_indented_lines_under_a_bullet_person_are_theirs(self):
+        text = "- **Kim Lo** — Recruiter, kim@example.com\n  - Spoke 2026-09-20, will call back.\n- **Pat Lin**: board member\n"
+        (kim, pat), unparsed = imp.parse_contacts(text, "x.md")
+        self.assertEqual(unparsed, [])
+        self.assertIn("Spoke 2026-09-20, will call back.", kim.notes)
+        self.assertEqual(pat.name, "Pat Lin")
+
+    def test_short_table_row_is_padded_not_dropped(self):
+        text = "| Name | Title | Role in Process | Email | Notes |\n| --- | --- | --- | --- | --- |\n| Ann Bo | VP | Hiring manager | ann@example.com |\n"
+        [ann], unparsed = imp.parse_contacts(text, "x.md")
+        self.assertEqual((unparsed, ann.email), ([], "ann@example.com"))
+
     def test_role_words_match_whole_words_only(self):
         director = imp.Candidate(name="A", source="x:1", file="x", title="Director, Platform")
         self.assertEqual(imp.guess_role(director), "?")
@@ -163,10 +181,12 @@ class DraftTest(ImportFixture):
         draft_id, parsed, merges, intros = imp.parse_draft(text)
         self.assertEqual((draft_id, parsed[0][1]["Name"], merges, intros), ("d-20261014T090000", "A | B", [], []))
 
-    def test_generated_contacts_are_skipped(self):
-        self.people("add", "New Person", "--role", f"recruiter@{NW}")
+    def test_contacts_moved_aside_before_the_import_are_still_imported(self):
+        self.people("add", "New Person", "--role", f"recruiter@{NW}")  # moves NW's file aside
         summary, text = self.draft()
-        self.assertNotIn("Sam Ortiz", text)
+        self.assertIn("8 people from 5 files", summary)
+        self.assertIn(f"opportunity/{NW}/contacts.hand-written.md:", text)
+        self.assertIn("| Sam Ortiz |", text)
 
     def test_cli(self):
         self.assertIn("people-import-draft.md", self.people("import", "--draft"))
@@ -247,6 +267,31 @@ class ApplyTest(ImportFixture):
         self.assertIn("recruiter @ northwind_motors/vp_of_engineering", page)
         self.assertIn("A different Dana, met at a meetup.", page)
         self.assertFalse((self.root / "people" / "dana_reyes_2.md").exists())
+
+    def test_merge_that_fails_validation_writes_nothing(self):
+        text = self.edited_draft()
+        rows = self.rows(text)
+        # Merge a comma name into a later row, so earlier rows would already be written.
+        kim, pat = rows["Kim Vo|Bluefin Security"]["#"], rows["Pat Lin|Cobalt Labs"]["#"]
+        self.assertGreater(int(kim), 1)
+        text = text.replace(f"| {pat} | Pat Lin |", f"| {pat} | Lin, Pat |")
+        text = text.replace("## Same person?\n", f"## Same person?\n\n- [x] {kim} = {pat} — test\n")
+        (self.root / imp.DRAFT_NAME).write_text(text)
+        self.assertIn("comma", self.people_error("import", "--apply", imp.DRAFT_NAME))
+        self.assertFalse((self.root / "people").exists())
+        self.assertEqual(self.events(), [])
+
+    def test_merged_rows_keep_their_other_org_and_title(self):
+        self.edited_draft(merge_danas=True)
+        self.apply()
+        page = self.page("dana_reyes")
+        self.assertIn("- org: Acme Corp", page)
+        self.assertIn("- title: Recruiter", page)
+
+    def test_nothing_is_proposed_twice(self):
+        self.edited_draft()
+        self.apply()
+        self.assertIn("nothing to import", self.people_error("import", "--draft"))
 
     def test_reapply_is_a_no_op(self):
         self.edited_draft()

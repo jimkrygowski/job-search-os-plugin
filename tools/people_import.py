@@ -174,9 +174,10 @@ def parse_table_block(block, rel, first, opp, org):
         cells = [tracker.unescape_cell(cell) for cell in tracker.split_row(line)]
         if all(_SEPARATOR_CELL.fullmatch(cell) for cell in cells):
             continue
-        if len(cells) != len(header):
+        if len(cells) > len(header):
             unparsed.append(f"{rel}:{n}: {line}")
             continue
+        cells += [""] * (len(header) - len(cells))  # a short row renders fine in markdown
         c = Candidate(name="", source=f"{rel}:{n}", file=rel, opportunity=opp, org=org)
         for head, kind, value in zip(header, kinds, cells):
             if not value:
@@ -210,6 +211,7 @@ def parse_contacts(text: str, rel: str, opp: str = "", org: str = ""):
     lines = text.splitlines()
     cands, unparsed = [], []
     current = None
+    level = 0  # heading depth of the current person's section; 0 for a bullet person
     i = 0
     while i < len(lines):
         stripped = lines[i].strip()
@@ -226,7 +228,7 @@ def parse_contacts(text: str, rel: str, opp: str = "", org: str = ""):
             if parsed is not None:
                 cands += parsed[0]
                 unparsed += parsed[1]
-            elif current is not None:
+            elif current is not None and (level or lines[i][:1].isspace()):
                 for line in block:
                     current.add_note(line)
             else:
@@ -236,16 +238,22 @@ def parse_contacts(text: str, rel: str, opp: str = "", org: str = ""):
             continue
         heading = _HEADING.match(stripped)
         if heading:
-            current = None
-            if len(heading.group(1)) >= 2:
-                name, rest = split_heading(heading.group(2))
-                if looks_like_name(name):
-                    current = Candidate(name=name, source=f"{rel}:{n}", file=rel, opportunity=opp,
-                                        org=org, title=rest)
-                    cands.append(current)
-        elif current is not None:
+            depth = len(heading.group(1))
+            name, rest = split_heading(heading.group(2))
+            if current is not None and level and depth > level and not looks_like_name(name):
+                current.add_note(stripped)  # e.g. "### Notes" inside a person's section
+                i += 1
+                continue
+            current, level = None, 0
+            if depth >= 2 and looks_like_name(name):
+                current = Candidate(name=name, source=f"{rel}:{n}", file=rel, opportunity=opp,
+                                    org=org, title=rest)
+                cands.append(current)
+                level = depth
+        elif current is not None and (level or lines[i][:1].isspace()):
             absorb_line(current, stripped)
         else:
+            current, level = None, 0
             bullet = _PERSON_BULLET.match(stripped)
             if bullet and looks_like_name(bullet.group(1)) and field_kind(bullet.group(1)) is None:
                 rest = bullet.group(2).strip()
@@ -253,32 +261,53 @@ def parse_contacts(text: str, rel: str, opp: str = "", org: str = ""):
                               org=org, email=find_email(rest), role_text=rest)
                 c.add_note(rest)
                 cands.append(c)
+                current = c  # indented lines that follow are theirs
             else:
                 unparsed.append(f"{rel}:{n}: {stripped}")
         i += 1
     return cands, unparsed
 
 
-def collect(root: Path, known: dict):
+def imported_files(events: list[dict]) -> set[str]:
+    """Source files an applied import already took people from."""
+    files = set()
+    for e in events:
+        detail = e.get("detail")
+        if e["type"] == "person" and isinstance(detail, dict) and detail.get("import"):
+            files.update(source.rsplit(":", 1)[0] for source in detail.get("sources", []))
+    return files
+
+
+def collect(root: Path, known: dict, imported: set[str] = frozenset()):
     """Candidates from every hand-written contacts.md (generated ones are
-    skipped) and networking.md, the unparsed lines, and the tracker
-    opportunities those contacts.md files belong to."""
+    skipped), from a contacts.hand-written.md that people.py moved aside
+    before the import ran, and from networking.md; the unparsed lines; and
+    the tracker opportunities those files belong to."""
     cands, unparsed, opps = [], [], []
     base = root / "opportunity"
-    for path in sorted(base.glob("*/*/contacts.md")):
-        text = path.read_text(encoding="utf-8")
-        if store.GENERATED in text:
-            continue
-        rel = path.relative_to(root).as_posix()
-        folder = "/".join(path.parent.relative_to(base).parts)
+    folders = sorted({p.parent for name in ("contacts.md", store.HAND_WRITTEN) for p in base.glob(f"*/*/{name}")})
+    for folder_path in folders:
+        folder = "/".join(folder_path.relative_to(base).parts)
         info = known.get(folder)
-        found, skipped = parse_contacts(text, rel, folder if info else "", info["company"] if info else "")
-        cands += found
-        unparsed += skipped
-        if info:
+        contacts_rel = f"opportunity/{folder}/contacts.md"
+        backup_rel = f"opportunity/{folder}/{store.HAND_WRITTEN}"
+        sources = []
+        contacts = folder_path / "contacts.md"
+        if (contacts.exists() and contacts_rel not in imported
+                and store.GENERATED not in (text := contacts.read_text(encoding="utf-8"))):
+            sources.append((contacts_rel, text))
+        backup = folder_path / store.HAND_WRITTEN
+        if backup.exists() and not {contacts_rel, backup_rel} & imported:
+            sources.append((backup_rel, backup.read_text(encoding="utf-8")))
+        for rel, text in sources:
+            found, skipped = parse_contacts(text, rel, folder if info else "", info["company"] if info else "")
+            cands += found
+            unparsed += skipped
+        if sources and info:
             opps.append(folder)
     net = root / NETWORKING
-    if net.exists() and NETWORKING_POINTER not in (text := net.read_text(encoding="utf-8")):
+    if (net.exists() and NETWORKING not in imported
+            and NETWORKING_POINTER not in (text := net.read_text(encoding="utf-8"))):
         found, skipped = parse_contacts(text, NETWORKING)
         for c in found:  # "## Name — Org - Role"
             if " - " in c.title:
@@ -455,7 +484,8 @@ def write_draft(today: datetime.date | None = None) -> str:
     root = store.root()
     with store.locked():
         known = tracker.known_opportunities()
-        cands, unparsed, _ = collect(root, known)
+        events, _ = store.read_events()
+        cands, unparsed, _ = collect(root, known, imported_files(events))
     if not cands:
         raise PeopleError("nothing to import: no hand-written contacts.md or networking.md entries found")
     rows = make_rows(cands, today)
@@ -503,6 +533,19 @@ def _note_section(c: Candidate) -> str:
     return f"\n### From {label}\n" + (f"\n{notes}\n" if notes else "")
 
 
+def _other_details(p: Person, cands: list[Candidate]) -> str:
+    """Org, title and email values the sources had besides the ones kept."""
+    lines, seen = [], set()
+    for c in cands:
+        for key in ("org", "title", "email"):
+            value = getattr(c, key)
+            mark = (key, value.casefold())
+            if value and value.casefold() != getattr(p, key).casefold() and mark not in seen:
+                seen.add(mark)
+                lines.append(f"- {key}: {value}")
+    return "\n### Other details from the import\n\n" + "\n".join(lines) + "\n" if lines else ""
+
+
 def _retire_networking(root: Path) -> bool:
     net = root / NETWORKING
     if not net.exists():
@@ -532,7 +575,7 @@ def apply(draft_path: Path) -> str:
             return f"draft {draft_id} was already applied; nothing to do"
         people = store.load_people()
         known = tracker.known_opportunities()
-        cands, _, opps = collect(root, known)
+        cands, _, opps = collect(root, known, imported_files(events))
         by_source = {c.source: c for c in cands}
         errors: list[str] = []
 
@@ -591,6 +634,10 @@ def apply(draft_path: Path) -> str:
         seen_email: dict[str, int] = {}
         for num, p in final.items():
             p.body = ""
+            try:
+                store.check_person(p)  # merges can add values a single row didn't have
+            except PeopleError as e:
+                errors.append(f"row {num} ({p.name}) after merging: {e}")
             dup = next((q for q in people.values()
                         if (p.email and q.email.casefold() == p.email.casefold())
                         or (q.name.casefold() == p.name.casefold() and q.org.casefold() == p.org.casefold())), None)
@@ -610,7 +657,8 @@ def apply(draft_path: Path) -> str:
             p = final[num]
             p.slug = store.allocate_slug(p.name, used)
             used.add(p.slug)
-            p.body = "\n## Notes\n" + "".join(_note_section(by_source[s]) for s in sources[num])
+            p.body = ("\n## Notes\n" + "".join(_note_section(by_source[s]) for s in sources[num])
+                      + _other_details(p, [by_source[s] for s in sources[num]]))
             store.save_person(p)
             people[p.slug] = p
             slug_of[num] = p.slug
