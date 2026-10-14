@@ -268,6 +268,89 @@ def cmd_due(args):
         for i in waiting:
             print("  " + format_intro(i, st.people, today))
 
+def _intro(intros: dict, intro_id: str) -> dict:
+    i = intros.get(intro_id)
+    if i is None:
+        raise PeopleError(f"no intro {intro_id!r} (see: people.py intro list)")
+    if i["status"] == "closed":
+        raise PeopleError(f"{intro_id} is closed ({i.get('result')}); closed intros don't change")
+    return i
+
+
+def _intro_ts(i: dict, day: str | None) -> str:
+    ts = store.event_ts(day)
+    if ts[:10] < i["updated"][:10]:
+        raise PeopleError(f"--date {ts[:10]} is before {i['id']}'s last step ({i['updated'][:10]})")
+    return ts
+
+
+def cmd_intro_offer(args):
+    with store.locked():
+        st = load_state()
+        frm = store.resolve(args.person, st.people, st.merges)
+        if args.to:
+            to = store.resolve(args.to, st.people, st.merges).slug
+            if to == frm.slug:
+                raise PeopleError("a person can't introduce themselves")
+        else:
+            org = args.to_org.strip()
+            if not org or "\n" in org:
+                raise PeopleError("--to-org needs an organization name")
+            to = f"org:{org}"
+        connector = Role("connector", args.for_) if args.for_ else None
+        if connector:
+            require_opportunities([connector], st.known)
+        ts = store.event_ts(args.date)
+        intro_id = store.next_intro_id(store.intro_states(st.events, st.merges))
+        if connector and connector not in frm.roles:
+            frm.roles.append(connector)
+            store.save_person(frm)
+            store.append_event({"type": "person", "person": frm.slug, "action": "role",
+                                "detail": {"add": [str(connector)], "drop": []}})
+            store.sync_contacts({args.for_}, st.known, st.people)
+        store.append_event({"ts": ts, "type": "intro", "intro": intro_id, "status": "offered",
+                            "from": frm.slug, "to": to, "for": args.for_ or "", "note": args.note})
+    print(intro_id)
+
+
+def cmd_intro_advance(args):
+    with store.locked():
+        st = load_state()
+        i = _intro(store.intro_states(st.events, st.merges), args.id)
+        order = store.INTRO_STATUSES
+        if order.index(args.status) <= order.index(i["status"]):
+            raise PeopleError(f"{args.id} is already {i['status']}; intros only move forward "
+                              f"({' → '.join(order)})")
+        ts = _intro_ts(i, args.date)
+        store.append_event({"ts": ts, "type": "intro", "intro": args.id, "status": args.status})
+    print(f"{args.id}: {args.status}")
+
+
+def cmd_intro_close(args):
+    with store.locked():
+        st = load_state()
+        i = _intro(store.intro_states(st.events, st.merges), args.id)
+        if args.result == "led_to_opportunity":
+            if not args.opportunity:
+                raise PeopleError("led_to_opportunity needs --opportunity <company>/<role>")
+            require_opportunities([Role("other", args.opportunity)], st.known)
+        ts = _intro_ts(i, args.date)
+        store.append_event({"ts": ts, "type": "intro", "intro": args.id, "status": "closed",
+                            "result": args.result,
+                            "opportunity": args.opportunity if args.result == "led_to_opportunity" else ""})
+    print(f"{args.id}: closed ({args.result})")
+
+
+def cmd_intro_list(args):
+    with store.locked():
+        st = load_state()
+        intros = store.intro_states(st.events, st.merges)
+    shown = [i for i in intros.values() if not args.open or i["status"] != "closed"]
+    for i in sorted(shown, key=lambda i: int(i["id"][2:])):
+        print(format_intro(i, st.people))
+    if not shown:
+        print("no intros")
+
 def build_parser():
     parser = argparse.ArgumentParser(description="People, follow-ups and intros")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -324,6 +407,32 @@ def build_parser():
     p_due = sub.add_parser("due")
     p_due.add_argument("--within", default="0d")
     p_due.set_defaults(func=cmd_due)
+
+    p_intro = sub.add_parser("intro")
+    intro_sub = p_intro.add_subparsers(dest="intro_command", required=True)
+    p_offer = intro_sub.add_parser("offer")
+    p_offer.add_argument("person", help="who is making the intro")
+    target = p_offer.add_mutually_exclusive_group(required=True)
+    target.add_argument("--to", help="a person")
+    target.add_argument("--to-org", dest="to_org", help="an organization, when there's no one person yet")
+    p_offer.add_argument("--for", dest="for_", help="<company>/<role> opportunity it's for")
+    p_offer.add_argument("--date")
+    p_offer.add_argument("--note", default="")
+    p_offer.set_defaults(func=cmd_intro_offer)
+    for status in ("made", "met"):
+        p_step = intro_sub.add_parser(status)
+        p_step.add_argument("id")
+        p_step.add_argument("--date")
+        p_step.set_defaults(func=cmd_intro_advance, status=status)
+    p_close = intro_sub.add_parser("close")
+    p_close.add_argument("id")
+    p_close.add_argument("--result", required=True, choices=store.INTRO_RESULTS)
+    p_close.add_argument("--opportunity")
+    p_close.add_argument("--date")
+    p_close.set_defaults(func=cmd_intro_close)
+    p_list = intro_sub.add_parser("list")
+    p_list.add_argument("--open", action="store_true")
+    p_list.set_defaults(func=cmd_intro_list)
 
     return parser
 

@@ -206,5 +206,78 @@ class DueTest(WorkspaceTestCase):
         self.assertNotIn("Soon Person", self.people("due"))
 
 
+class IntroTest(WorkspaceTestCase):
+    def setUp(self):
+        super().setUp()
+        self.people("add", "Dana Reyes", "--org", "Northwind Motors")
+        self.people("add", "Lee Park", "--org", "Bluefin Security")
+
+    def offer(self, *extra):
+        return self.people("intro", "offer", "dana_reyes", *extra).strip()
+
+    def test_offer_prints_sequential_ids(self):
+        self.assertEqual(self.offer("--to", "lee_park"), "i-1")
+        self.assertEqual(self.offer("--to-org", "Bluefin Security"), "i-2")
+        event = self.events()[-1]
+        self.assertEqual((event["status"], event["from"], event["to"]), ("offered", "dana_reyes", "org:Bluefin Security"))
+
+    def test_offer_for_an_opportunity_adds_the_connector_role(self):
+        self.offer("--to-org", "Bluefin Security", "--for", BF)
+        self.assertIn(f"connector @ {BF}", self.page("dana_reyes"))
+        self.assertIn("| Dana Reyes | connector |", self.contacts(BF))
+
+    def test_offer_for_unknown_opportunity_writes_nothing(self):
+        before = len(self.events())
+        self.people_error("intro", "offer", "dana_reyes", "--to", "lee_park", "--for", "nope/cto")
+        self.assertEqual(len(self.events()), before)
+
+    def test_offer_needs_exactly_one_target_and_not_self(self):
+        self.assertNotEqual(self._run("people.py", "intro", "offer", "dana_reyes").returncode, 0)
+        self.assertIn("themselves", self.people_error("intro", "offer", "dana_reyes", "--to", "dana_reyes"))
+
+    def test_lifecycle_forward_only(self):
+        self.offer("--to", "lee_park", "--date", days_ago(10))
+        self.people("intro", "made", "i-1", "--date", days_ago(8))
+        self.assertIn("forward", self.people_error("intro", "made", "i-1"))
+        self.assertIn("before", self.people_error("intro", "met", "i-1", "--date", days_ago(9)))
+        self.people("intro", "met", "i-1")
+        self.assertIn("forward", self.people_error("intro", "made", "i-1"))
+
+    def test_skip_forward_is_allowed(self):
+        self.offer("--to", "lee_park")
+        self.people("intro", "met", "i-1")
+        self.assertEqual(self.events()[-1]["status"], "met")
+
+    def test_close_rules(self):
+        self.offer("--to", "lee_park")
+        self.assertIn("--opportunity", self.people_error("intro", "close", "i-1", "--result", "led_to_opportunity"))
+        self.people_error("intro", "close", "i-1", "--result", "led_to_opportunity", "--opportunity", "nope/cto")
+        self.people("intro", "close", "i-1", "--result", "led_to_opportunity", "--opportunity", BF)
+        self.assertEqual((self.events()[-1]["result"], self.events()[-1]["opportunity"]), ("led_to_opportunity", BF))
+        self.assertIn("closed", self.people_error("intro", "made", "i-1"))
+        self.assertIn("closed", self.people_error("intro", "close", "i-1", "--result", "dead_end"))
+
+    def test_unknown_intro(self):
+        self.assertIn("i-9", self.people_error("intro", "made", "i-9"))
+
+    def test_list(self):
+        self.offer("--to", "lee_park")
+        self.offer("--to-org", "Bluefin Security")
+        self.people("intro", "close", "i-2", "--result", "dead_end")
+        out = self.people("intro", "list")
+        self.assertIn("i-1  Dana Reyes → Lee Park  offered", out)
+        self.assertIn("i-2  Dana Reyes → Bluefin Security  closed (dead_end)", out)
+        self.assertNotIn("i-2", self.people("intro", "list", "--open"))
+
+    def test_due_separates_stalled_from_open(self):
+        self.offer("--to", "lee_park", "--date", days_ago(30))
+        self.offer("--to-org", "Bluefin Security", "--date", days_ago(2))
+        out = self.people("due")
+        self.assertLess(out.index("Stalled intros"), out.index("i-1"))
+        self.assertLess(out.index("Open intros"), out.index("i-2"))
+        self.set_config(dashboard={"stallDays": 40})
+        self.assertNotIn("Stalled", self.people("due"))
+
+
 if __name__ == "__main__":
     unittest.main()
