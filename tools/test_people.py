@@ -279,5 +279,43 @@ class IntroTest(WorkspaceTestCase):
         self.assertNotIn("Stalled", self.people("due"))
 
 
+class MergeTest(WorkspaceTestCase):
+    def setUp(self):
+        super().setUp()
+        self.people("add", "Dana Reyes", "--org", "Northwind Motors", "--role", f"recruiter@{NW}",
+                    "--next-touch", "2026-11-01")
+        self.people("add", "D. Reyes", "--org", "Bluefin Security", "--email", "dana@example.com",
+                    "--title", "Talent Partner", "--role", f"connector@{BF}", "--relationship", "yes",
+                    "--cadence", "30d", "--next-touch", "2026-10-20")
+        path = self.root / "people" / "d_reyes.md"
+        path.write_text(path.read_text() + "Knows the Bluefin CTO.\n")
+        self.people("touch", "d_reyes", "--channel", "email", "--date", days_ago(3))
+
+    def test_merge(self):
+        self.people("merge", "dana_reyes", "d_reyes")
+        page = self.page("dana_reyes")
+        # d_reyes's touch 3 days ago moved its next_touch to today + 27; the earlier date wins.
+        earlier = min("2026-11-01", (TODAY + datetime.timedelta(days=27)).isoformat())
+        for fragment in ("email: dana@example.com", "title: Talent Partner", "relationship: yes",
+                         "cadence: 30d", f"next_touch: {earlier}", f"recruiter @ {NW}", f"connector @ {BF}",
+                         "aliases: D. Reyes", "## Merged from D. Reyes", "- org: Bluefin Security",
+                         "Knows the Bluefin CTO."):
+            self.assertIn(fragment, page)
+        self.assertFalse((self.root / "people" / "d_reyes.md").exists())
+        self.assertIn("| Dana Reyes | connector | [[people/dana_reyes]] |", self.contacts(BF))
+        self.assertEqual(self.events()[-1]["detail"], {"from": "d_reyes"})
+
+    def test_history_and_lookups_follow_the_merge(self):
+        self.people("merge", "dana_reyes", "d_reyes")
+        self.assertIn(f"{days_ago(3)}  email", self.people("show", "d_reyes"))
+
+    def test_dropped_slug_is_never_reused(self):
+        self.people("merge", "dana_reyes", "d_reyes")
+        self.assertIn("d_reyes_2", self.people("add", "D. Reyes", "--org", "Elsewhere"))
+
+    def test_merge_with_self_fails(self):
+        self.assertIn("same person", self.people_error("merge", "dana_reyes", "Dana Reyes"))
+
+
 if __name__ == "__main__":
     unittest.main()

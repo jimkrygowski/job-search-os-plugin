@@ -351,6 +351,23 @@ def cmd_intro_list(args):
     if not shown:
         print("no intros")
 
+def cmd_merge(args):
+    with store.locked():
+        st = load_state()
+        keep = store.resolve(args.keep, st.people, st.merges)
+        drop = store.resolve(args.drop, st.people, st.merges)
+        if keep.slug == drop.slug:
+            raise PeopleError(f"{args.keep!r} and {args.drop!r} are the same person ({keep.slug})")
+        affected = store.opportunities_of(keep) | store.opportunities_of(drop)
+        store.merge_fields(keep, drop)
+        store.save_person(keep)
+        store.append_event({"type": "person", "person": keep.slug, "action": "merge",
+                            "detail": {"from": drop.slug}})
+        store.delete_person(drop.slug)
+        del st.people[drop.slug]
+        store.sync_contacts(affected, st.known, st.people)
+    print(f"merged {drop.slug} into {store.describe(keep)}")
+
 def build_parser():
     parser = argparse.ArgumentParser(description="People, follow-ups and intros")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -433,6 +450,11 @@ def build_parser():
     p_list = intro_sub.add_parser("list")
     p_list.add_argument("--open", action="store_true")
     p_list.set_defaults(func=cmd_intro_list)
+
+    p_merge = sub.add_parser("merge")
+    p_merge.add_argument("keep")
+    p_merge.add_argument("drop")
+    p_merge.set_defaults(func=cmd_merge)
 
     return parser
 

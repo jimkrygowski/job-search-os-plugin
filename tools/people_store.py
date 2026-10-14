@@ -430,3 +430,33 @@ def due_people(people: dict[str, Person], today: datetime.date, within_days: int
     horizon = (today + datetime.timedelta(days=within_days)).isoformat()
     hits = [p for p in people.values() if p.relationship == "yes" and p.next_touch and p.next_touch <= horizon]
     return sorted(hits, key=lambda p: (p.next_touch, p.slug))
+
+
+# --- merging ------------------------------------------------------------------------
+
+def merge_fields(keep: Person, drop: Person) -> None:
+    """Folds drop into keep (keep's slug survives). Nothing of drop's is lost:
+    a differing org/title/email is listed under the merged section."""
+    for role in drop.roles:
+        if role not in keep.roles:
+            keep.roles.append(role)
+    taken = {keep.name.casefold(), *(a.casefold() for a in keep.aliases)}
+    for alias in [drop.name, *drop.aliases]:
+        if alias.casefold() not in taken:
+            keep.aliases.append(alias)
+            taken.add(alias.casefold())
+    differing = []
+    for key in ("org", "title", "email"):
+        mine, theirs = getattr(keep, key), getattr(drop, key)
+        if theirs and not mine:
+            setattr(keep, key, theirs)
+        elif theirs and theirs.casefold() != mine.casefold():
+            differing.append(f"- {key}: {theirs}")
+    if drop.relationship == "yes":
+        keep.relationship = "yes"
+    if keep.cadence == "none":
+        keep.cadence = drop.cadence
+    if drop.next_touch and (not keep.next_touch or drop.next_touch < keep.next_touch):
+        keep.next_touch = drop.next_touch
+    section = f"\n## Merged from {drop.name}\n" + ("\n" + "\n".join(differing) + "\n" if differing else "")
+    keep.body = keep.body + ("" if keep.body.endswith("\n") else "\n") + section + drop.body
