@@ -111,6 +111,12 @@ the workspace in its own private git repo.
 - `tracker_events.jsonl` — every stage change, written by the tracker;
   it powers the dashboard. Never edit it by hand; `backfill-history`
   adds past history.
+- `people/<slug>.md` — one page per person (recruiters, connectors,
+  hiring managers, panelists, peers): a field block managed only by
+  `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py"`, then free-form notes
+  below it. Files starting with `_` are not person pages.
+- `people_events.jsonl` — every touch, intro and people change, written by
+  `people.py`. Never edit it by hand.
 - `opportunity/<Company>/<Role>/` — per-opportunity documents (JD,
   contacts, notes, tailored resume/cover letter, transcripts). The folder
   name is a slug of whatever Company/Role you typed (lowercased, spaces
@@ -121,10 +127,37 @@ the workspace in its own private git repo.
   table itself still stores Company/Role as typed, unslugified — only
   the folder name is normalized.
 
-## Contacts
+## People
 
-Whenever you learn of a new contact for an opportunity — a name, title,
-role in the process, and email address, when known — resolve that
-opportunity's folder (`opportunity-path`, above) and add them to its
-`contacts.md`. Don't wait to be asked; this applies during any skill
-session, not just a dedicated one.
+Everyone in the search has one page in `people/`, and each opportunity's
+`contacts.md` is generated from those pages.
+Never hand-edit an opportunity's `contacts.md`, and never edit a page's
+field block (the lines between the `---` markers) by hand. Use
+`people.py`. Notes go below the field block, and you may edit them
+directly.
+
+Whenever you learn of a contact for an opportunity, don't wait to be asked.
+This applies during any skill session. Check `people.py find "<name or
+email>"` first, then either add them or link the page they already have:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" add "<Name>" --org "<Org>" --title "<Title>" --email "<email>" --role "<role>@<opportunity slug>"
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" role "<person>" --add "<role>@<opportunity slug>"
+
+- **Roles:** recruiter, hiring, connector, peer, panelist, other.
+- **Opportunity slug:** the last two parts of the folder path that
+  `opportunity-path` prints (e.g. `northwind_motors/vp_of_engineering`).
+- **Relationship:** `--relationship yes --cadence <N>d` marks someone to
+  keep in touch with. Ask the user before setting it.
+
+Log every conversation:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" touch "<person>" --channel call|email|meeting|message|other --date <YYYY-MM-DD> --note "<what>"
+
+Record intros as they happen:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" intro offer "<who offered>" --to "<person>" | --to-org "<Org>" [--for <opportunity slug>]
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" intro made|met <id>
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" intro close <id> --result led_to_opportunity --opportunity <slug> | --result led_to_intros | --result dead_end
+
+`people.py due` lists who to get back to and which intros have stalled.
+Never send anything to these people. Draft only.

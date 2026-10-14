@@ -17,11 +17,15 @@ resolve its folder via
 construct the path yourself from the typed Company/Role. Read `jd.md`,
 `notes.md`, and `contacts.md` from that folder, plus
 `career/trajectory.md`.
+Then, for each person in `contacts.md`, run
+`python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" show "<slug>"` and read their
+page `people/<slug>.md`. The page holds their notes from every opportunity
+they've been part of, not just this one.
 
 ## Briefing Contents
 
-1. **Who they're likely talking to** — from `contacts.md`, plus what's
-   known about that person's role and priorities from `notes.md`.
+1. **Who they're likely talking to** — from `contacts.md` and each person's
+   page, plus what's known about their role and priorities from `notes.md`.
 2. **Likely questions** — grounded in the JD and this stage of the
    process (a recruiter screen asks different things than a CEO round).
 3. **Suggested talking points** — drawn from `career/profile.md` and

@@ -63,6 +63,14 @@ trajectory to score against isn't meaningful.
    guess. If the user has already applied, use `--stage "Applied"`.
    (`add` stores the Company/Role you typed, unslugified, so the tracker
    table stays human-readable — only the folder name is slugified.)
+6a. If the opportunity came through a person (a referral or warm intro),
+    close the intro that led here. Run
+    `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" intro list --open`.
+    If it shows the matching intro, run
+    `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" intro close <id> --result led_to_opportunity --opportunity <opportunity slug>`.
+    Otherwise record the intro first with
+    `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" intro offer "<person>" --to-org "<Company>" --for <opportunity slug>`,
+    then close the id it prints the same way.
 7. Tell the user the result plainly, including if it scores poorly — cite
    the specific must-have/must-not it fails, don't soften it.
 

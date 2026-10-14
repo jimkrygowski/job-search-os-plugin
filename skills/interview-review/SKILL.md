@@ -48,6 +48,13 @@ run the `summarize-call` command on it first.
      --next-action-date "<date, if known>"
    ```
 
+4. Record the people on the call:
+   - For each attendee, check `people.py find "<name>"`. Add anyone new with their role on this opportunity:
+     `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" add "<Name>" --org "<Org>" --title "<Title>" --role "<role>@<opportunity slug>"`
+   - Log the call for every attendee:
+     `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" touch "<person>" --channel call --date <call date> --note "<stage>"` (`--channel meeting` if in person).
+   - If someone offered an intro, record it with `people.py intro offer` (see the persona's People section).
+
 ## Guardrails
 
 - Feedback must cite the transcript, not general impressions.

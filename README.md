@@ -31,7 +31,7 @@ If you've been using the original repo, create your new workspace folder, start 
 
 ## What it actually does
 
-Fifteen skills, each a focused piece of the search. Invoke them by name (`/job-search-os:<skill>`) or just ask for what you want in a session started in your workspace:
+Sixteen skills, each a focused piece of the search. Invoke them by name (`/job-search-os:<skill>`) or just ask for what you want in a session started in your workspace:
 
 | Skill | What it does |
 |---|---|
@@ -50,6 +50,7 @@ Fifteen skills, each a focused piece of the search. Invoke them by name (`/job-s
 | `migrate` | Imports data from an original job-search-os checkout into a workspace |
 | `dashboard` | Opens a local, read-only web dashboard of your search — see below |
 | `backfill-history` | Reconstructs past stage history from your notes (once), so the dashboard can show full paths |
+| `relationships` | Who to get back to, intros in flight, and everything known about a person — one page per person, follow-up cadences, intros tracked from offer to result |
 
 Plus one command, `/job-search-os:summarize-call`, which turns a call transcript into structured notes.
 
@@ -98,13 +99,16 @@ The plugin (this repo):
 .claude-plugin/
   plugin.json                  plugin manifest
   marketplace.json             this repo is also its own marketplace
-skills/                        the fifteen skills above (+ their research reviews)
+skills/                        the sixteen skills above (+ their research reviews)
 commands/summarize-call.md     turns a call transcript into structured notes
 hooks/hooks.json               SessionStart (persona + setup check), PreToolUse (Gmail send guard)
 guidance/persona.md            persona and guardrails injected in a workspace
 tools/
   workspace.py                 finds / creates the workspace
   tracker.py                   sole writer of tracker.md, locked, tested
+  people.py                    people, follow-ups and intros (sole writer of people/)
+  people_store.py              person pages, event log, generated contacts.md
+  people_import.py             one-time import of old contacts.md / networking.md
   score_table.py               deterministic opportunity score table
   option_value.py              deterministic equity valuation calculator
   gmail_extract.py             extracts new content from a saved Gmail thread

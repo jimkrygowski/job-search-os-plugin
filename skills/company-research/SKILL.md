@@ -36,3 +36,7 @@ Append to `notes.md` in the resolved opportunity folder under a
 or "user's own knowledge" if it came from the conversation, or "my
 inference" if you're inferring rather than citing something concrete —
 label it explicitly, don't blend it in as fact).
+
+People you identify (likely hiring manager, leaders the role works with) get a page and a role on this opportunity, if they don't have one already (`people.py find` first):
+`python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" add "<Name>" --org "<Company>" --title "<Title>" --role "other@<opportunity slug>"`
+(`hiring@…` for the hiring manager). Leave `relationship` at its default (`no`).

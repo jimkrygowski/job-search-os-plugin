@@ -37,7 +37,14 @@ Summarize a job search call transcript and save the notes to the right place.
    Add a one-line summary to the resolved opportunity folder's `notes.md`
    as well — the tracker row itself stays to short scalar fields.
 
-5. **Ask the user** if there are follow-up emails to draft or prep docs to update based on what came out of the call.
+5. **Record the people on the call:**
+   - For each attendee, check `people.py find "<name>"`. Add anyone new with their role on this opportunity:
+     `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" add "<Name>" --org "<Org>" --title "<Title>" --role "<role>@<opportunity slug>"`
+   - Log the call for every attendee:
+     `python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" touch "<person>" --channel call --date <call date> --note "<stage>"` (`--channel meeting` if in person).
+   - If someone offered an intro, record it with `people.py intro offer` (see the persona's People section).
+
+6. **Ask the user** if there are follow-up emails to draft or prep docs to update based on what came out of the call.
 
 ## Style notes
 - Be specific — names, numbers, quotes from the call where useful

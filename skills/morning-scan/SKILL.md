@@ -26,7 +26,7 @@ browser. If either is missing, Tier 4 reports it and the scan continues.
 1. Check the date and time.
 2. Write the date and time to the console using the following pattern: Morning Scan for [DATE] [TIME]
 3. Read `tracker.md` (the source of truth for pipeline state) so the scan is grounded in each company's current stage, last activity, and next action before pulling email/calendar.
-4. Run Tiers 1-3 in parallel, **then** Tier 4 — it is browser-driven and
+4. Run Tiers 1-3 in parallel, **then** Tier 4, **then** Tier 5 — it is browser-driven and
    slower, so running it last keeps it from delaying the others.
 5. Summarize — cross-check findings from all four tiers against
    `tracker.md` and flag any mismatches (e.g. a "next action" already
@@ -37,12 +37,13 @@ browser. If either is missing, Tier 4 reports it and the scan continues.
    close. Never close it yourself.
 
 ## Tier 1 — Pipeline Emails
-Build the contact list dynamically rather than using a fixed list: read
-`tracker.md` for active opportunities, then for each one resolve
-its folder via
-`python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" opportunity-path "<Company>" "<Role>"` (never
-construct the path yourself from the Company/Role text in the tracker
-row) and read that folder's `contacts.md` for known contact emails.
+Build the sender list from the people tool rather than a fixed list:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" emails --active
+
+It prints everyone linked to an active opportunity plus everyone with
+`relationship: yes`, one email per line.
+
 Search for new messages from all of them in the last 24 hours:
 
 ```
@@ -58,6 +59,12 @@ from:(<contact1> OR <contact2> OR ...) newer_than:1d
    python3 "${CLAUDE_PLUGIN_ROOT}/tools/gmail_extract.py" <saved_thread.json> --latest 3
    ```
    (`--after YYYY-MM-DD` also works if you know the last-checked date.)
+
+**Log each genuinely new message as a touch**, using the sender's email, the message date and its subject:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" touch "<sender email>" --channel email --date <YYYY-MM-DD> --note "<subject>"
+
+Re-running is safe: an identical touch is logged once.
 
 ## Tier 2 — Job Alert Feeds
 
@@ -193,10 +200,10 @@ Classify every in-window thread against `tracker.md`:
 
 ### Report, do not act
 
-**Do not create tracker rows, write `contacts.md`, or change any status
+**Do not create tracker rows, add people, or change any status
 from this tier without the user saying so** — recruiter volume would fill
 the tracker with dead entries. Once they say which matter, normal rules
-apply, including the standing job-search-os instruction to record contacts.
+apply, including the standing job-search-os instruction to record people (`people.py add`).
 
 ### When it fails
 
@@ -207,6 +214,15 @@ which if determinable, let the rest of the scan stand.
 Stop after 2-3 failed calls and report what was tried — do not retry or
 explore elsewhere on LinkedIn. Never trigger a JavaScript dialog; a modal
 ends the session's browser access.
+
+## Tier 5 — Relationships
+
+After Tiers 1–3 (it needs their touches logged), run:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/tools/people.py" due --within 3d
+
+It lists relationships due for a touch (overdue first), stalled intros and
+other open intros. Don't draft outreach unless the user asks. Never send.
 
 ## Summary Format
 
@@ -219,3 +235,5 @@ skipped as noise. If the tier could not run, say so in one line and why.
 **Job alerts** — table of new listings worth flagging. Skip anything that doesn't fit. If nothing fits, say so in one line.
 
 **Calendar** — bullet list of the week. Call out anything job-search-relevant.
+
+**Relationships** — the `due` output: who to get back to (with the last touch), stalled intros, open intros. One line each. If nothing is due, say so in one line.
