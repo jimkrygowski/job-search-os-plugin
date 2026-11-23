@@ -115,5 +115,34 @@ class PeopleGuidanceTest(unittest.TestCase):
         self.assertIn("Never send", text)
 
 
+class InterviewFileSkillsTest(unittest.TestCase):
+    def text(self, name):
+        return (SKILLS / name / "SKILL.md").read_text()
+
+    def test_both_skills_call_interview_file(self):
+        callers = {skill for skill, _ in _invocations("interview-file")}
+        self.assertTrue({"interview-prep", "interview-review"} <= callers, callers)
+
+    def test_both_read_talking_points(self):
+        for name in ("interview-prep", "interview-review"):
+            self.assertIn("career/talking_points.md", self.text(name), name)
+
+    def test_prep_defines_terms_and_saves_rehearsals(self):
+        text = self.text("interview-prep")
+        for phrase in ("Glossary", "best guess", "Rehearsed answers"):
+            self.assertIn(phrase, text)
+
+    def test_review_writes_to_interview_file_not_notes(self):
+        text = self.text("interview-review")
+        self.assertNotIn("Append the review under", text)
+        self.assertNotIn("appends it to the opportunity's notes.md", text)
+        self.assertIn("## Review (<date>)", text)
+        self.assertIn("question actually asked", text)
+
+    def test_talking_points_needs_ok(self):
+        for name in ("interview-prep", "interview-review"):
+            self.assertIn("only with the user's OK", self.text(name), name)
+
+
 if __name__ == "__main__":
     unittest.main()
