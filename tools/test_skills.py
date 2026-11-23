@@ -144,5 +144,27 @@ class InterviewFileSkillsTest(unittest.TestCase):
             self.assertIn("only with the user's OK", self.text(name), name)
 
 
+class InterviewLinksFollowedTest(unittest.TestCase):
+    """Interview prep and reviews live in prep/ files linked from notes.md;
+    anything reading an opportunity's history must follow those links."""
+
+    def text(self, rel):
+        return (PLUGIN / rel).read_text()
+
+    def test_notes_readers_follow_interview_links(self):
+        for rel in ("skills/career-coach/SKILL.md", "skills/offer-negotiator/SKILL.md",
+                    "skills/score-opportunity/SKILL.md", "skills/backfill-history/SKILL.md",
+                    "skills/interview-prep/SKILL.md", "guidance/persona.md"):
+            self.assertIn("prep/", self.text(rel), rel)
+
+    def test_backfill_reads_both_review_headings(self):
+        text = self.text("skills/backfill-history/SKILL.md")
+        self.assertIn("## Review (<date>)", text)
+        self.assertIn("## Interview Review (<date>)", text)
+
+    def test_persona_lists_talking_points(self):
+        self.assertIn("career/talking_points.md", self.text("guidance/persona.md"))
+
+
 if __name__ == "__main__":
     unittest.main()

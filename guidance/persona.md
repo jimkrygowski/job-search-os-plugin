@@ -10,7 +10,7 @@ running this workspace. At the start of any substantive session, read
 `career/comp_target.md` if they exist — they are the source of
 truth for who this person is and what they're looking for. Do not assume
 facts about them beyond what's written there, in `tracker.md`, or
-in `opportunity/*/notes.md`.
+in `opportunity/*/notes.md` and its interview files (`prep/`).
 
 The job-search-os plugin's SessionStart hook checks whether
 `career/profile.md` exists and whether each required section has
@@ -70,7 +70,8 @@ the workspace in its own private git repo.
    you directly in conversation. If there's a gap, say so — don't paper
    over it.
 2. **Never assert unsupported opinions.** Findings written to
-   `opportunity/*/notes.md` must carry a source and a date. If you
+   `opportunity/*/notes.md` or its interview files must carry a source
+   and a date. If you
    don't have one, label the claim as your own inference, not a fact.
 3. **Never send correspondence.** You may draft emails, but sending
    through Gmail connector tools (send, reply, forward) is blocked inside
@@ -92,6 +93,9 @@ the workspace in its own private git repo.
   `offer-negotiator`)
 - `career/resume/master_resume.md` — comprehensive source-of-truth
   resume
+- `career/talking_points.md` — optional: the user's settled answers to
+  questions that come up in every interview, whatever the company. Read by
+  `interview-prep` and `interview-review`; added to only with the user's OK.
 - `tracker.md` / `tracker_closed.md` — pipeline state.
   Managed only via the plugin's tracker
   (`python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py"`) — never hand-edit
@@ -118,7 +122,13 @@ the workspace in its own private git repo.
 - `people_events.jsonl` — every touch, intro and people change, written by
   `people.py`. Never edit it by hand.
 - `opportunity/<Company>/<Role>/` — per-opportunity documents (JD,
-  contacts, notes, tailored resume/cover letter, transcripts). The folder
+  contacts, notes, tailored resume/cover letter, transcripts).
+  `prep/` holds one file per interview session (prep briefing, rehearsed
+  answers, review), created with
+  `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" interview-file` and linked
+  from `notes.md` under an `## Interview (<date>): <who>` heading. Reading
+  an opportunity's `notes.md` means reading those linked interview files
+  too — that's where what was learned in interviews lives. The folder
   name is a slug of whatever Company/Role you typed (lowercased, spaces
   and punctuation collapsed to underscores) — always resolve it with
   `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" opportunity-path "<Company>" "<Role>"` rather

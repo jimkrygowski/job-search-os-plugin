@@ -77,7 +77,8 @@ trajectory to score against isn't meaningful.
 ## Re-scoring an Existing Opportunity
 
 Resolve the folder path the same way (`opportunity-path`), then read the
-existing `jd.md` and `notes.md` inside it, re-run the scoring steps above
+existing `jd.md` and `notes.md` inside it (plus the interview files
+`notes.md` links in `prep/`, for what interviews have revealed), re-run the scoring steps above
 against the current `career/trajectory.md` (useful right after a
 trajectory revisit), and append the updated table to `jd.md` under a
 heading with today's date, rather than overwriting the original scoring.
