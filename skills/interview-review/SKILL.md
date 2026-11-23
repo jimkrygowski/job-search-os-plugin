@@ -26,10 +26,14 @@ one conversation with one set of people; a loop day with several sessions
 has one file per session, so review each session's transcript into its
 own file.
 
-1. List the `prep/` folder inside the resolved opportunity folder. Look for
-   the file prepped for this session: same interviewer(s), **any date** —
-   it may have been prepped before the call was scheduled, or the call was
-   rescheduled. Read it: the prep is useful context for the review.
+1. List the `prep/` folder inside the resolved opportunity folder. A file
+   is this session's if it has no `## Review` section yet and is for the
+   same interviewer(s), at **any date** (it may have been prepped before
+   the call was scheduled, or the call was rescheduled), or carries a label
+   for this stage ("recruiter screen" for a recruiter call). A file that's
+   already reviewed is an earlier session, even with the same person — this
+   call gets a new file. Read the matching file: the prep is useful context
+   for the review.
 2. Get the file's path with:
    ```
    python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" interview-file "<Company>" "<Role>" --date <YYYY-MM-DD> --who "<who>"

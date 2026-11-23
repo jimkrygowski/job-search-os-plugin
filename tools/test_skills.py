@@ -117,7 +117,8 @@ class PeopleGuidanceTest(unittest.TestCase):
 
 class InterviewFileSkillsTest(unittest.TestCase):
     def text(self, name):
-        return (SKILLS / name / "SKILL.md").read_text()
+        """Whitespace collapsed, so phrase checks don't depend on line wraps."""
+        return " ".join((SKILLS / name / "SKILL.md").read_text().split())
 
     def test_both_skills_call_interview_file(self):
         callers = {skill for skill, _ in _invocations("interview-file")}
@@ -138,6 +139,16 @@ class InterviewFileSkillsTest(unittest.TestCase):
         self.assertNotIn("appends it to the opportunity's notes.md", text)
         self.assertIn("## Review (<date>)", text)
         self.assertIn("question actually asked", text)
+
+    def test_both_skills_match_existing_session_files(self):
+        """Prep and review must find the same file: unreviewed files for the
+        same interviewer(s) or a label for this stage, at any date."""
+        for name in ("interview-prep", "interview-review"):
+            text = self.text(name)
+            self.assertIn("no `## Review` section yet", text, name)
+            self.assertIn("any date", text, name)
+            self.assertIn("label", text, name)
+            self.assertIn("already reviewed", text, name)
 
     def test_talking_points_needs_ok(self):
         for name in ("interview-prep", "interview-review"):

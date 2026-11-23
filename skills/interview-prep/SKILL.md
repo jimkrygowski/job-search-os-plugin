@@ -40,7 +40,20 @@ not to hold them to a plan.
      session, their names joined with "and" ("Dana Reyes and Sam Ortiz");
      only if names aren't known yet, a short label ("recruiter screen").
 
-   Then get each session's file:
+   Then find each session's file — prep and review must land in the same
+   one. List the `prep/` folder inside the opportunity folder. A file is
+   this session's if it has no `## Review` section yet and is for the same
+   interviewer(s), at any date (it may have been prepped before the call
+   was scheduled), or carries a label for this stage ("recruiter screen")
+   that this session's real names now replace. A file that's already
+   reviewed is an earlier session, even with the same person — a later
+   round gets a new file.
+   - one file matches: reuse that file's date and `who` (the `who` is in
+     its `# Interview:` header line), even if the date has since changed;
+   - none matches: use the date and `who` above;
+   - more than one, or unclear: ask the user which.
+
+   Then get the file:
    ```
    python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" interview-file "<Company>" "<Role>" --date <YYYY-MM-DD> --who "<who>"
    ```
