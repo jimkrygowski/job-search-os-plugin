@@ -14,7 +14,7 @@
 
 - Stdlib only; tests run via `tools/run_tests.sh`.
 - Skills call tools as `python3 "${CLAUDE_PLUGIN_ROOT}/tools/<x>.py"`; never bare `tools/...` or `state/...`.
-- No real people/companies in examples, fixtures or tests (invented names only); no "Jim" in skills/guidance.
+- No real people/companies in examples, fixtures or tests (invented names only); no personal names in skills/guidance.
 - Never write user state outside the workspace.
 - Version 0.3.0 → 0.4.0 in `.claude-plugin/plugin.json`, `marketplace.json` if it carries one, and the README pin.
 
