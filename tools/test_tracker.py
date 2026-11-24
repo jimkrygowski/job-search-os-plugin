@@ -845,5 +845,86 @@ class KnownOpportunitiesTest(unittest.TestCase):
         self.assertFalse(Path(".people.lock").exists())
 
 
+class InterviewFileTest(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmpdir.name).resolve()
+        workspace.init_root(self.root)
+        self.script = str(Path(__file__).parent / "tracker.py")
+        self.opp = self.root / "opportunity" / "acme" / "vp_eng"
+
+    def tearDown(self):
+        self._tmpdir.cleanup()
+
+    def run_cli(self, *args, date="2026-12-01", who="Dana Reyes"):
+        return subprocess.run(
+            [sys.executable, self.script, "interview-file", "Acme", "VP Eng",
+             "--date", date, "--who", who, *args],
+            cwd=self.root, capture_output=True, text=True)
+
+    def notes(self):
+        return (self.opp / "notes.md").read_text()
+
+    def test_creates_file_with_header_and_prints_path(self):
+        r = self.run_cli()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = self.opp / "prep" / "2026-12-01_dana_reyes.md"
+        self.assertEqual(r.stdout.strip(), str(path))
+        self.assertTrue(path.read_text().startswith(
+            "# Interview: Acme / VP Eng: Dana Reyes, 2026-12-01\n"))
+
+    def test_appends_link_to_notes(self):
+        self.run_cli()
+        self.assertIn("\n## Interview (2026-12-01): Dana Reyes\n"
+                      "[prep/2026-12-01_dana_reyes.md](prep/2026-12-01_dana_reyes.md)\n",
+                      self.notes())
+
+    def test_second_call_changes_nothing(self):
+        first = self.run_cli()
+        path = Path(first.stdout.strip())
+        path.write_text(path.read_text() + "\n## Prep (2026-11-30)\nbriefing\n")
+        before_file, before_notes = path.read_text(), self.notes()
+        second = self.run_cli()
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(second.stdout, first.stdout)
+        self.assertEqual(path.read_text(), before_file)
+        self.assertEqual(self.notes(), before_notes)
+        self.assertEqual(self.notes().count("## Interview (2026-12-01)"), 1)
+
+    def test_creates_folder_and_notes_when_missing(self):
+        self.assertFalse(self.opp.exists())
+        r = self.run_cli()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.opp / "notes.md").exists())
+
+    def test_link_starts_on_own_line(self):
+        self.opp.mkdir(parents=True)
+        (self.opp / "notes.md").write_text("# Notes\nlast line")
+        self.run_cli()
+        self.assertIn("last line\n\n## Interview (", self.notes())
+
+    def test_rejects_bad_date_and_empty_who(self):
+        for kwargs in ({"date": "2026-13-01"}, {"date": "next tuesday"},
+                       {"who": "  "}, {"who": "!!"}):
+            r = self.run_cli(**kwargs)
+            self.assertEqual(r.returncode, 1, kwargs)
+            self.assertIn("error:", r.stderr)
+            self.assertFalse((self.opp / "prep").exists(), kwargs)
+
+    def test_two_interviewers_one_file(self):
+        r = self.run_cli(who="Dana Reyes and Sam Ortiz")
+        self.assertEqual(Path(r.stdout.strip()).name,
+                         "2026-12-01_dana_reyes_and_sam_ortiz.md")
+
+    def test_works_from_inside_the_opportunity_folder(self):
+        self.opp.mkdir(parents=True)
+        r = subprocess.run(
+            [sys.executable, self.script, "interview-file", "Acme", "VP Eng",
+             "--date", "2026-12-01", "--who", "Dana Reyes"],
+            cwd=self.opp, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(Path(r.stdout.strip()).parent, self.opp / "prep")
+
+
 if __name__ == "__main__":
     unittest.main()

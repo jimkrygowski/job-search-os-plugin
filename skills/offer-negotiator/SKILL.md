@@ -192,8 +192,10 @@ that file) — skip the rest.
 
 1. Identify the role/level/geo context — from the JD if one's been
    scored (`python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" opportunity-path "<Company>" "<Role>"`
-   to resolve the folder and read `jd.md`), or from what the user
-   describes in conversation if no opportunity has been created yet.
+   to resolve the folder and read `jd.md`, plus `notes.md` and the
+   interview files it links in `prep/` for any comp signal already heard
+   in a call), or from what the user describes in conversation if no
+   opportunity has been created yet.
 2. Read `career/comp_target.md` if it exists, for the target/ask
    range and walk-away minimums — this moment should ground any number it
    suggests in that file, not invent one.
@@ -326,7 +328,9 @@ file) — skip the rest.
 2. Read that folder's `notes.md`, specifically its most recent
    `## Offer Breakdown (<date>)` section. If none exists, offer to run
    Offer Breakdown first, or ask the user for the offer numbers directly
-   — never fabricate numbers to skip this step.
+   — never fabricate numbers to skip this step. Also read the interview
+   files `notes.md` links in `prep/`: reviews there record comp signals,
+   concerns and priorities the interviewers raised.
 3. Read `career/comp_target.md` if it exists, for the target/ask
    range, walk-away minimums, and cash/equity/benefits priority.
 

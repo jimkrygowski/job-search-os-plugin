@@ -42,8 +42,8 @@ Sixteen skills, each a focused piece of the search. Invoke them by name (`/job-s
 | `score-opportunity` | Scores a pasted job description against your actual must-haves/must-nots, criterion by criterion — not a vibe check |
 | `tailor-resume` | Tailors a resume and cover letter from your master resume — never invents experience to fit a JD |
 | `company-research` | Researches a target company, every finding tagged with a source |
-| `interview-prep` | Briefing before a call — who you're talking to, likely questions, honest talking points including where you have a real gap |
-| `interview-review` | Turns a call transcript into structured feedback and advances the pipeline |
+| `interview-prep` | Briefing before a call — who you're talking to, likely questions, honest talking points including where you have a real gap, every term defined — saved in that interview's own file, with rehearsed answers and your settled answers to common questions (`career/talking_points.md`) |
+| `interview-review` | Turns a call transcript into structured feedback in that interview's file (judged against what was actually asked, not the prep) and advances the pipeline |
 | `career-coach` | A structured coaching session grounded in evidence-graded psychology frameworks — see below |
 | `morning-scan` | A daily pipeline/email/calendar scan, run on demand — not a background job |
 | `file-unemployment-claim` | Walks the weekly unemployment certification — **Massachusetts DUA only** |
@@ -145,7 +145,7 @@ The plugin lives at this repo's root, so any marketplace can list it with a `git
 ```json
 {
   "name": "job-search-os",
-  "source": { "source": "github", "repo": "jimkrygowski/job-search-os-plugin", "ref": "v0.3.0" }
+  "source": { "source": "github", "repo": "jimkrygowski/job-search-os-plugin", "ref": "v0.4.0" }
 }
 ```
 

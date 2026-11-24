@@ -647,6 +647,39 @@ def cmd_opportunity_path(args):
     print(opportunity_path(args.company, args.role))
 
 
+def interview_file_path(company: str, role: str, date: str, who: str) -> Path:
+    """One file per interview session, shared by interview-prep and
+    interview-review: <opportunity>/prep/<date>_<who slug>.md."""
+    return opportunity_path(company, role) / "prep" / f"{date}_{slugify(who)}.md"
+
+
+def cmd_interview_file(args):
+    """Prints the interview session's file, creating it (with a header) and
+    linking it from notes.md the first time. Later calls change nothing."""
+    try:
+        date = datetime.date.fromisoformat(args.date).isoformat()
+    except ValueError:
+        _fail(f"--date must be YYYY-MM-DD, got {args.date!r}")
+    who = " ".join(args.who.split())
+    if slugify(who) == "unnamed":
+        _fail("--who needs the interviewer's name(s) or a short label")
+    path = interview_file_path(args.company, args.role, date, who)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("x") as f:
+            f.write(f"# Interview: {args.company} / {args.role}: {who}, {date}\n")
+    except FileExistsError:
+        print(path)
+        return
+    notes_path = path.parent.parent / "notes.md"
+    existing = notes_path.read_text() if notes_path.exists() else ""
+    gap = "\n" if existing.endswith("\n") or not existing else "\n\n"
+    rel = f"prep/{path.name}"
+    with notes_path.open("a") as f:
+        f.write(f"{gap}## Interview ({date}): {who}\n[{rel}]({rel})\n")
+    print(path)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="Manage tracker.md / tracker_closed.md")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -722,6 +755,13 @@ def build_parser():
     p_path.add_argument("company")
     p_path.add_argument("role")
     p_path.set_defaults(func=cmd_opportunity_path)
+
+    p_interview = sub.add_parser("interview-file")
+    p_interview.add_argument("company")
+    p_interview.add_argument("role")
+    p_interview.add_argument("--date", required=True)
+    p_interview.add_argument("--who", required=True)
+    p_interview.set_defaults(func=cmd_interview_file)
 
     return parser
 

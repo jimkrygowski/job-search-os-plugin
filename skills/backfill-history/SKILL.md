@@ -22,8 +22,11 @@ inferred history differently from recorded history.
    which have a blank `source`.
 2. For each of those, resolve its folder with
    `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" opportunity-path "<Company>" "<Role>"`
-   and read `notes.md` (and `jd.md` if present). Collect evidence:
-   dated `## Interview Review (<date>)` headings, `**Closed (<date>):**`
+   and read `notes.md` (and `jd.md` if present), plus the interview files
+   it links in `prep/`. Collect evidence:
+   dated `## Interview Review (<date>)` headings in `notes.md` (older
+   reviews), `## Interview (<date>): <who>` links and the
+   `## Review (<date>)` headings inside the `prep/` files, `**Closed (<date>):**`
    lines, dated entries that mention applying, a recruiter call, a hiring
    manager conversation, an onsite/loop, or an offer, and anything saying
    how the opportunity arrived (referral, recruiter, job alert, etc.).

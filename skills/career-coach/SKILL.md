@@ -23,7 +23,7 @@ The frameworks in this skill have a documented evidence base in `research.md`. C
 
 Before doing anything else:
 
-1. **Read the pipeline:** `tracker.md` (and, for any opportunity under discussion, its `notes.md` — resolve the folder via `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" opportunity-path "<Company>" "<Role>"` rather than constructing the path yourself).
+1. **Read the pipeline:** `tracker.md` (and, for any opportunity under discussion, its `notes.md` and the interview files it links (`prep/`, under `## Interview (<date>): <who>` headings) — resolve the folder via `python3 "${CLAUDE_PLUGIN_ROOT}/tools/tracker.py" opportunity-path "<Company>" "<Role>"` rather than constructing the path yourself).
 2. **Read `career/profile.md` and `career/trajectory.md`.** Check
    `trajectory.md`'s `Last reviewed:` date — if it's more than 6 weeks
    old, flag this to the user before going further and offer to run

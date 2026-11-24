@@ -1,6 +1,6 @@
 {
   "name": "job-search-os",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "An agentic job search system: candidate profile, target-role trajectory, opportunity scoring, resume tailoring, company research, interview prep/review, evidence-graded career coaching, offer negotiation, a pipeline tracker, a relationships tracker (people, follow-ups, intros), and a local read-only dashboard (Sankey of outcomes, stage conversion, weekly activity). State lives in your own workspace folder, never in the plugin.",
   "author": { "name": "Jim Krygowski", "url": "https://linkedin.com/in/jimkrygowski" },
   "homepage": "https://github.com/jimkrygowski/job-search-os-plugin",

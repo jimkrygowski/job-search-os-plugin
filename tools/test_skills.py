@@ -115,5 +115,67 @@ class PeopleGuidanceTest(unittest.TestCase):
         self.assertIn("Never send", text)
 
 
+class InterviewFileSkillsTest(unittest.TestCase):
+    def text(self, name):
+        """Whitespace collapsed, so phrase checks don't depend on line wraps."""
+        return " ".join((SKILLS / name / "SKILL.md").read_text().split())
+
+    def test_both_skills_call_interview_file(self):
+        callers = {skill for skill, _ in _invocations("interview-file")}
+        self.assertTrue({"interview-prep", "interview-review"} <= callers, callers)
+
+    def test_both_read_talking_points(self):
+        for name in ("interview-prep", "interview-review"):
+            self.assertIn("career/talking_points.md", self.text(name), name)
+
+    def test_prep_defines_terms_and_saves_rehearsals(self):
+        text = self.text("interview-prep")
+        for phrase in ("Glossary", "best guess", "Rehearsed answers"):
+            self.assertIn(phrase, text)
+
+    def test_review_writes_to_interview_file_not_notes(self):
+        text = self.text("interview-review")
+        self.assertNotIn("Append the review under", text)
+        self.assertNotIn("appends it to the opportunity's notes.md", text)
+        self.assertIn("## Review (<date>)", text)
+        self.assertIn("question actually asked", text)
+
+    def test_both_skills_match_existing_session_files(self):
+        """Prep and review must find the same file: unreviewed files for the
+        same interviewer(s) or a label for this stage, at any date."""
+        for name in ("interview-prep", "interview-review"):
+            text = self.text(name)
+            self.assertIn("no `## Review` section yet", text, name)
+            self.assertIn("any date", text, name)
+            self.assertIn("label", text, name)
+            self.assertIn("already reviewed", text, name)
+
+    def test_talking_points_needs_ok(self):
+        for name in ("interview-prep", "interview-review"):
+            self.assertIn("only with the user's OK", self.text(name), name)
+
+
+class InterviewLinksFollowedTest(unittest.TestCase):
+    """Interview prep and reviews live in prep/ files linked from notes.md;
+    anything reading an opportunity's history must follow those links."""
+
+    def text(self, rel):
+        return (PLUGIN / rel).read_text()
+
+    def test_notes_readers_follow_interview_links(self):
+        for rel in ("skills/career-coach/SKILL.md", "skills/offer-negotiator/SKILL.md",
+                    "skills/score-opportunity/SKILL.md", "skills/backfill-history/SKILL.md",
+                    "skills/interview-prep/SKILL.md", "guidance/persona.md"):
+            self.assertIn("prep/", self.text(rel), rel)
+
+    def test_backfill_reads_both_review_headings(self):
+        text = self.text("skills/backfill-history/SKILL.md")
+        self.assertIn("## Review (<date>)", text)
+        self.assertIn("## Interview Review (<date>)", text)
+
+    def test_persona_lists_talking_points(self):
+        self.assertIn("career/talking_points.md", self.text("guidance/persona.md"))
+
+
 if __name__ == "__main__":
     unittest.main()
